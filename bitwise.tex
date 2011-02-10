@@ -1,0 +1,2015 @@
+\documentclass{article}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{color}
+\usepackage{listings}
+\usepackage{verbatim}
+
+\lstset{ %
+language=C,                % choose the language of the code
+basicstyle=\footnotesize,       % the size of the fonts that are used for the code
+numbers=left,                   % where to put the line-numbers
+numberstyle=\footnotesize,      % the size of the fonts that are used for the line-numbers
+stepnumber=1,                   % the step between two line-numbers. If it is 1 each line will be numbered
+numbersep=5pt,                  % how far the line-numbers are from the code
+backgroundcolor=\color{white},  % choose the background color. You must add \usepackage{color}
+showspaces=false,               % show spaces adding particular underscores
+showstringspaces=false,         % underline spaces within strings
+showtabs=false,                 % show tabs within strings adding particular underscores
+frame=single,                   % adds a frame around the code
+tabsize=2,              % sets default tabsize to 2 spaces
+captionpos=b,                   % sets the caption-position to bottom
+breaklines=true,        % sets automatic line breaking
+breakatwhitespace=false,    % sets if automatic breaks should only happen at whitespace
+escapeinside={\%}{)}          % if you want to add a comment within your code
+}
+\hypersetup{pdfborder={0 0 0}} % die, red boxes!
+\begin{document}
+Abstract: in this paper, I propose algorithms to compute the result of 
+bitwise interval arithmetic for several integer operators common to the 
+C family of programming languages.  I will also provide efficient 
+implementations for each, and will attempt to demonstrate the correctness 
+of both the algorithms and the implementations.
+
+\section{Definitions}
+
+In low level programming, integers are represented by sequences of $N$ 
+bits. Let us refer to the set of N-bit bit sequences as $B_N$. 
+For this discussion, we will assume the first bit (low bit) 
+is indexed at $0$, and 
+the high bit at $N-1$. We will be abusing interval syntax:
+\begin{equation*} 
+[a,b] = \{i \in \mathbb{Z} : a \le i \le b\}
+\end{equation*}
+For convenience, let us define
+\begin{equation*}
+I_N = [0, N)
+\end{equation*}
+\begin{equation*}
+I_0 = \emptyset
+\end{equation*}
+A bit sequence $a \in B_N$ may be interpreted as a signed or unsigned 
+integer, with the semantics as follows:
+\begin{equation}\label{unsf} 
+unsigned : B_N \rightarrow [0,2^N)
+\end{equation}
+\begin{equation}\label{sgnf} 
+signed : B_N \rightarrow [-2^{N-1},2^{N-1})
+\end{equation}
+\begin{equation}\label{unsdef} 
+unsigned(a) = \sum_{i\in I_N} {a_i} \cdot 2^i
+\end{equation}
+\begin{equation}\label{sgndef} 
+signed(a) = - a_{N-1} \cdot 2^{N-1} + \sum_{i = 0}^{N-2} {a_i} \cdot 2^i
+\end{equation}
+
+It should be apparent that $B_N$ is isomorphic to $\mathbb{Z}_N$. 
+Hence, we may use the modular operators +,-,*, on elements of $B_N$, with 
+the result in the range of signed or unsigned, depending on context.
+Aaaaa! C standard specifies that result of arithmetic operations on 
+signed integers
+which causes overflow is undefined!!!!!
+
+Also, we define $a>b$ as 
+
+\begin{equation*}t(a)>t(b), \quad for \quad a,b \in B_N\end{equation*}
+
+for $t$ $signed$ or $unsigned$, depending on context.
+\vspace{10pt}
+
+The operators of interest to us are functions of the form 
+$f : B_N \times B_N \rightarrow B_N$. 
+They may be computed in $O(N)$ time. In particular, on modern 
+computers, they may be executed very efficiently for select values of $N$.
+We will refer to them by the symbols used in C. They are the 
+following:
+\begin{itemize}
+\item \& - bitwise and, where
+
+$(a \& b)_i = a_i \wedge b_i$, for $i \in I_N$
+\item \textbar \,  - bitwise or, where
+
+$(a$ \textbar $b)_i = a_i \vee b_i$, for $i \in I_N$
+\item \verb!^!  - bitwise exclusive or, where
+
+$(a \verb!^! b)_i = a_i \Leftrightarrow \neg b_i$, for $i \in I_N$
+\end{itemize}
+
+Other C operators which will be used:
+
+\begin{itemize}
+\item $\sim$ - bitwise negation, 
+
+$ (\sim) : B_N \rightarrow B_N$, where
+
+$( \sim a)_i = \neg a_i$, for $i \in I_N$
+
+It should be apparent that $(\sim)$ is a bijection, and that $(\sim)$ is its 
+own inverse.
+\item \textless\textless \,  - left shift
+
+$ ($\textless\textless$) : B_N \times I_N  \rightarrow B_N$, where
+\begin{equation*} 
+(a \text{\textless\textless} \, b)_i = \left\{
+    \begin{array}{l l}
+    a_{i-b} & \quad \text{if $i \ge b$}\\
+    0 & \quad \text{otherwise}
+    \end{array}\right.
+\end{equation*}
+\item \textgreater\textgreater \,  - right shift
+
+$ ($\textgreater\textgreater$) : B_N \times I_N  \rightarrow B_N$, where
+\begin{equation*} 
+(a \text{\textgreater\textgreater} \, b)_i = \left\{
+    \begin{array}{l l}
+    a_{i+b} & \quad \text{if $i+b < N$}\\
+    0 & \quad \text{otherwise}
+    \end{array}\right.
+\end{equation*}
+\item bsr
+
+This is not a C primitive
+(though it is a primitive in Intel assembly code), 
+but it is used extensively in this paper.
+It takes the name of an Intel instruction. Its semantics are as 
+follows:
+
+$bsr : B_N \setminus \{\vec 0\} \rightarrow I_N$
+
+$bsr(a) = max \,\{ i \in I_N : a_i = 1\} $
+
+Otherwise, $bsr$ can be implemented in user code.
+\end{itemize}
+Todo: check C standard for gotchas
+\vspace{10pt}
+
+Define functions
+\vspace{10pt}
+
+$up : B_N \times I_N \rightarrow B_N,$
+
+$dn : B_N \times I_N \rightarrow B_N$
+
+$up(a,i) = \alpha$, where
+\begin{equation*}
+    \alpha_j = \left\{
+    \begin{array}{l l}
+    a_j & \quad \text{if $j > i$}\\
+    1 & \quad \text{if $j = i$}\\
+    0 & \quad \text{if $j < i$}\\
+    \end{array}\right.
+\end{equation*}
+
+$dn(a,i) = \alpha$, where
+\begin{equation*}
+    \alpha_j = \left\{
+    \begin{array}{l l}
+    a_j & \quad \text{if $j > i$}\\
+    0 & \quad \text{if $j = i$}\\
+    1 & \quad \text{if $j < i$}\\
+    \end{array}\right.
+\end{equation*}
+
+Note that with unsigned interpretation, and 
+for $x = up(a,i)$, where $a_i = 0$, and $y \in B_N$ the following hold:
+\begin{equation*}
+a \le x
+\end{equation*}
+\begin{equation*}
+a \le y \wedge y_i = 1 \quad \Rightarrow \quad x \le y
+\end{equation*}
+
+For $x = dn(a,i)$, where $a_i = 1$, and $y \in B_N$ the following hold:
+\begin{equation*}
+a \ge x
+\end{equation*}
+\begin{equation*}
+a \ge y \wedge y_i = 0 \quad \Rightarrow \quad x \ge y
+\end{equation*}
+
+Let $s(a,i)$ be the bits $a_{0}$ through $a_{i}$ inclusive.
+
+Given integer intervals 
+\begin{equation*}
+a = [a_{min},a_{max}] \subseteq B_N
+\end{equation*} 
+\begin{equation*}
+b = [b_{min},b_{max}] \subseteq B_N
+\end{equation*} 
+let
+\begin{equation*}
+c = [c_{min},c_{max}] \subseteq B_N
+\end{equation*} 
+where
+\begin{equation*}c_{min} = min \; \{A \; op \; B :A \in a, B \in b\},\end{equation*} 
+\begin{equation*}c_{max} = max \; \{A \; op \; B :A \in a, B \in b\}, \end{equation*}
+for bitwise operator $op$, and $signed$ or $unsigned$ interpretation.
+
+Also, let $\check a, \hat a \in a$, and likewise for $b$, where
+\begin{equation*}
+c_{max} = \hat a \; op \; \hat b
+\end{equation*}
+\begin{equation*}
+c_{min} = \check a \; op \; \check b
+\end{equation*}
+
+
+\section{unsigned $max \{a\&b\}$}\label{maxand}
+Consider $i \in I_N$ and ranges $a^i$ and $b^i$, where
+
+\begin{equation}\label{le1} s(a^i_{min},i) \le s(a^i_{max},i)\end{equation}
+and likewise for $b$. Then by \eqref{unsdef} exactly one of the following must be true:
+\begin{equation}\label{00} 
+a^i_{min,i},a^i_{max,i} = 0,0
+\end{equation}
+\begin{equation}\label{01} 
+a^i_{min,i},a^i_{max,i} = 0,1
+\end{equation}
+\begin{equation}\label{11} 
+a^i_{min,i}, a^i_{max,i} = 1,1
+\end{equation}
+note that:
+\begin{equation}\label{up1}
+a^i_{max, i} = 1 \quad \Rightarrow \quad \alpha_i = 1 \quad 
+\text{for some} \; \alpha \in a^i
+\end{equation}
+and likewise for $b$.
+
+It follows from \eqref{unsdef} that for $\alpha \in a^i$, 
+$\beta \in b^i$:
+\begin{equation}
+(\alpha \; \text{\&} \; \beta)_i = 1
+\quad \Rightarrow \quad c_{max,i} = 1
+\end{equation}
+then from \eqref{up1}, it follows that 
+\begin{equation}
+c_{max,i} = a^i_{max,i} \; \text{\&}\; b^i_{max,i}
+\end{equation}
+
+Now, for $i \ge 1$, in the cases \eqref{00} and \eqref{11}, 
+it follows that \eqref{le1} 
+will hold for $a^{i-1}=a^i$ and $b^{i-1} = b^i$, but possibly
+not for case \eqref{01}. Note that:
+
+\begin{equation*}
+\eqref{01} \quad \Rightarrow 
+\quad (c_{max,i} = 1 \quad \Leftrightarrow \quad 
+b^i_{max,i} = 1)
+\end{equation*}
+
+
+For $\eqref{01} \wedge b^i_{max,i} = 1$, it must be that $\hat a_i = 1$. 
+Then for
+\begin{equation}\label{011maxand} 
+a^{i-1} \quad = \quad [up(a^i_{min}, i), a^i_{max}]
+\end{equation}
+
+$\hat a \in a^{i-1}$, and
+\eqref{le1} holds because $a^{i-1}_{min,j} = 0$ for $j < i$.
+Likewise for $b$.
+\vspace{10pt}
+
+For $\eqref{01} \wedge b^i_{max,i} = 0$, $\hat a_i$ is unconstrained.
+Since $c_{max}$ will be maximized with $a^j_{max,j} = 1$, 
+$\hat a_i = 0$ is desirable. Then for
+\begin{equation}\label{010maxand} 
+a^{i-1} \quad = \quad [a^i_{min}, dn(a^i_{max},i)]
+\end{equation}
+
+$\hat a \in a^{i-1}$, and
+\eqref{le1} holds because $\bar a_{i-1,max,j} = 1$ for $j<i$.  
+Likewise for $b$.
+\vspace{10pt}
+
+So, given ranges $a$ and $b$ for which to find $c_{max}$ for $a\&b$,
+\eqref{le1} is true for $\bar a^{N-1}=a$, $\bar b^{N-1}=b$, and by
+\eqref{010maxand} and \eqref{011maxand}, \eqref{le1} is true for 
+subsequent $\bar a_i$, $\bar b_i$. Then using this procedure 
+we can compute the complete value of $c_{max}$. Prove it. No.
+\vspace{10pt}
+
+An intrepid observer will note that only the first applications of
+\eqref{011maxand} and \eqref{010maxand} affect subsequent calculations, and only
+applications of \eqref{010maxand} will affect the value of $c_{max}$. 
+However, to find the first application of each without computing all of $a^i$
+and $b^i$, one must consider the dependencies they
+may have on each other. Call a dependency chain a sequence of applications of 
+\eqref{011maxand} and \eqref{010maxand} on $a$ or $b$
+\begin{equation*}
+d_1 \rightarrow d_2 \rightarrow ... \; d_n
+\end{equation*}
+where $d_i$ occurs at bit $j_i$, $j_i < j_{i+1}$, and there is at most 1 
+application of each type on each of $a$ and $b$.
+\vspace{10pt}
+
+\begin{tabular}{l|c|c|c|c|l r}
+& $a_{min,i}$ & $a_{max,i}$ & $b_{min,i}$ & $b_{max,i}$ & effect &\\
+\hline
+$\eqref{011maxand}_a$ & $0$ & $1$ & & $1$ & $a_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{011maxand}_b$ & & $1$ & $0$ & $1$ & $b_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{010maxand}_a$ & $0$ & $1$ & & $0$ & $a_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{010maxand}_b$ & & $0$ & $0$ & $1$ & $b_{max,j} := 1$, \;& $j < i$ \\
+\end{tabular}
+
+\vspace{10pt}
+
+Then\\
+$\eqref{011maxand}_a$ \quad can trigger \quad $\eqref{010maxand}_a$\\
+$\eqref{011maxand}_b$ \quad can trigger \quad $\eqref{010maxand}_b$\\
+$\eqref{010maxand}_a$ \quad can trigger \quad $\eqref{011maxand}_a$, $\eqref{011maxand}_b$\\
+$\eqref{010maxand}_b$ \quad can trigger \quad $\eqref{011maxand}_a$, $\eqref{011maxand}_b$\\
+
+Because $\eqref{010maxand}_b$ sets $b_{max} = 1$ for following bits
+and $\eqref{010maxand}_a$ at $i$ requires $b_{max,i} = 0$ and vice versa,
+$\eqref{010maxand}_a$ and $\eqref{010maxand}_b$ cannot coexist in a 
+dependency chain, and if $\eqref{010maxand}_a$ occurs, $\eqref{010maxand}_b$ 
+will not.
+Then the worst possible dependency
+for the first application of $\eqref{010maxand}_a$ is:
+\begin{equation*} 
+\eqref{011maxand}_a \rightarrow \eqref{010maxand}_a
+\end{equation*}
+
+and likewise for $b$. 
+
+Let us introduce the syntax $aabb_i$ to mean 
+$a_{min,i},a_{max,i},b_{min,i},b_{max,i}$.
+
+Then the algorithm to find $max \{a\&b\}$ can be expressed as follows:
+\vspace{10pt}
+
+Given ranges $a,b$, define $i_a$ as the highest bit where 
+$\eqref{010maxand}_a$ occurs, and likewise for $b$. Then
+
+\begin{equation*}
+i_a = max \, ( \, \{i_0\} \cup \{i \in I_{i_1}\; : \; 
+            aabb_i = *1*0\} \, ) 
+\end{equation*}
+
+where
+\begin{equation*}
+i_0 = max \, \{i \in I_N\; : \; 
+aabb_i = 01*0\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_1 = max \, \{i\in I_N\; : \; 
+aabb_i = 01*1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\vspace{0pt}
+
+if $i_a > i_b$, then
+
+\quad $c_{max} = dn\,(a_{max},i_a) \; \text{\&} \; b_{max} $
+
+otherwise if $i_b > -1$,
+
+\quad $c_{max} = a_{max} \; \text{\&} \; dn\,(b_{max},i_b) $
+
+otherwise,
+
+\quad $c_{max} = a_{max} \; \text{\&} \; b_{max} $
+\vspace{10pt}
+
+This algorithm is correct because I said so. Sure would like to have 
+better justification than that.
+\vspace{10pt}
+
+Given a suitable N, (we will assume $N=32$),
+$dn(a_{max},i_a)$ can be efficiently computed with the C 
+primitives listed above
+
+Then in C, given ranges $a$ and $b$:
+\begin{lstlisting}
+#include<stdint.h>
+uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmax){
+\end{lstlisting}
+We can compute $i_a$ as follows:
+
+\begin{lstlisting}
+    uint32_t xi0 = ~amin & amax & ~bmax;
+\end{lstlisting}
+to find the bits unmodified by \eqref{011maxand} which trigger \eqref{010maxand}. 
+When $xi0 \ne 0$, $i_0 = bsr(xi0)$. Otherwise, $i_0 = -1$.
+\begin{lstlisting}
+    uint32_t xi1 = ~amin & amax & bmax;
+\end{lstlisting}
+to find the bits which trigger \eqref{011maxand}. 
+Assuming $xi1 \ne 0$, $i_1 = bsr(xi1)$.
+\begin{lstlisting}
+    uint32_t xi01 = 0;
+    if (xi1 != 0) xi01 = ((1 << bsr(xi1))-1) & amax & ~bmax;
+\end{lstlisting}
+to find the bits modified by \eqref{011maxand} which trigger \eqref{010maxand}.
+Note that
+\begin{lstlisting}
+    ((1 << i)-1) 
+\end{lstlisting}
+will result in a bit sequence with all bits below bit $i$ set to $1$, and 
+all other bits set to $0$. In particular, $i=0$ will result in $0$. 
+
+Assuming $xi01 \ne 0$, $i_a = max(i_0, bsr(xi01))$. Without using $max$,
+this can be computed as follows:
+\begin{lstlisting}
+    uint32_t xa = xi0 | xi01;
+    uint32_t ia = -1;
+    if (xa != 0) ia = bsr(xa);
+    return ia;
+}
+\end{lstlisting}
+
+Then, to compute $dn(a_{max}, i_a)$:
+\begin{lstlisting}
+uint32_t dn(uint32_t amin, uint32_t amax, uint32_t bmax){
+    uint32_t mask = 0;
+    uint32_t ia = i_a(amin,amax,bmax);
+    if (ia != -1) mask = (1 << ia)-1;
+    return amax|mask;
+}
+\end{lstlisting}
+
+Note that setting $a_{max,i} = 0$ has no effect on $c_{max}$, so it is not
+performed.
+Also, since $a\text{\textbar}0 = a$, the case $ia = -1$ has the same effect
+as $ia = 0$. Thus, if
+\begin{equation}\label{oho}
+min(ia) = 0
+\end{equation} 
+we obviate the
+need for the conditional.
+We can also use this principle to remove conditionals which guard 
+$bsr$ by setting its argument's minimum value to $1$. 
+$arg \text{\textbar} 1$ can accomplish this.
+With these optimizations, our code is now:
+\begin{lstlisting}
+#include<stdint.h>
+uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmax){
+    uint32_t xi0 = ~amin & amax & ~bmax;
+    uint32_t xi1 = ~amin & amax & bmax;
+    uint32_t xi01 = ((1 << bsr(xi1|1))-1) & amax & ~bmax;
+    uint32_t xa = xi0 | xi01;
+    uint32_t ia = bsr(xa|1);
+    return ia;
+}
+
+uint32_t dn(uint32_t amin, uint32_t amax, uint32_t bmax){
+    uint32_t mask = (1 << i_a(amin,amax,bmax))-1;
+    return amax|mask;
+}
+\end{lstlisting}
+
+Altogether, the algorithm expressed in C is as follows:
+\begin{lstlisting}
+#include <stdint.h>
+uint32_t maxand(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t xa1 = ~amin& amax      & bmax;
+    uint32_t xa0 = ~amin& amax      &~bmax;
+    uint32_t xb1 =        amax&~bmin& bmax;
+    uint32_t xb0 =       ~amax&~bmin& bmax;
+    xa0 |= ((1 << bsr(xa1|1))-1)&amax&~bmax;
+    xb0 |= ((1 << bsr(xb1|1))-1)&bmax&~amax;
+    if(xa0 > xb0) amax |= (1 << bsr(xa0|1))-1;
+    else  bmax |= (1 << bsr(xb0|1))-1;
+    return amax&bmax;
+}
+\end{lstlisting}
+
+\section{unsigned $max\{a\text{\textbar} b\}$}
+Again, the same basic construction as \ref{maxand} may be used. 
+The interesting differences are:
+
+It follows from \eqref{unsdef} that for $\alpha \in a^i$, $\beta \in b^i$:
+\begin{equation}
+(\alpha \; \text{\textbar} \; \beta)_i = 1
+\quad \Rightarrow \quad c_{min,i} = 1
+\end{equation}
+
+then from \eqref{up1}, it follows that 
+\begin{equation}\label{maxoreq}
+c_{max,i} = a^i_{max,i} \; \text{\textbar}\; b^i_{max,i}
+\end{equation}
+
+Then
+\begin{equation*}
+\eqref{01} \quad \Rightarrow \quad c_{max,i} = 1
+\end{equation*}
+
+For $\eqref{01} \wedge b^i_{max,i} = 0$, then $ \hat a_i = 1$ must be true. 
+Then 
+\begin{equation}\label{011maxor} 
+a^{i-1} \quad = \quad [up(a^i_{min}, i), a^i_{max}]
+\end{equation}
+
+Likewise for $b$.
+\vspace{10pt}
+
+For $\eqref{01} \wedge b_{max,i} = 1$, $\hat a_i$ is unconstrained.
+Since $c_{max}$ is maximized when $a_{max,j} = 1$, 
+$\hat a_i = 0$ is desirable. Then
+\begin{equation}\label{010maxor} 
+a^{i-1} \quad = \quad [a^i_{min}, dn(a^i_{max},i)]
+\end{equation}
+
+Likewise for $b$.
+\vspace{10pt}
+
+Now it is \eqref{010maxor} that affects the result, therefore the first
+bit where it occurs must be found.
+\vspace{10pt}
+
+\begin{tabular}{l|c|c|c|c|l r}
+& $a_{min,i}$ & $a_{max,i}$ & $b_{min,i}$ & $b_{max,i}$ & effect &\\
+\hline
+$\eqref{011maxor}_a$ & $0$ & $1$ & & $0$ & $a_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{011maxor}_b$ & & $0$ & $0$ & $1$ & $b_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{010maxor}_a$ & $0$ & $1$ & & $1$ & $a_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{010maxor}_b$ & & $1$ & $0$ & $1$ & $b_{max,j} := 1$, \;& $j < i$ \\
+\end{tabular}
+\vspace{10pt}
+
+Then\\
+$\eqref{011maxor}_a$ \quad can trigger \quad $\eqref{010maxor}_a$\\
+$\eqref{011maxor}_b$ \quad can trigger \quad $\eqref{010maxor}_b$\\
+$\eqref{010maxor}_a$ \quad can trigger \quad $\eqref{011maxor}_a$,
+$\eqref{010maxor}_b$ \\
+$\eqref{010maxor}_b$ \quad can trigger \quad $\eqref{011maxor}_b$,
+$\eqref{010maxor}_a$ \\
+
+Note that by \eqref{maxoreq}, the effect of $\eqref{010maxor}_b$ 
+occurring at bit $i$ is that $c_{max,j} = 1$, for $j<i$. 
+This makes any
+application of $\eqref{010maxor}_a$ occurring at bit $j<i$ superfluous.
+Therefore, we need only find the first of $\eqref{010maxor}_a$ and 
+$\eqref{010maxor}_b$.
+Thus, we need only take 
+\begin{equation*} 
+\eqref{011maxor}_a \rightarrow \eqref{010maxor}_a
+\end{equation*}
+into account, and likewise for $b$.
+Therefore, the algorithm for max\{a\text{\textbar}b\} is:
+\vspace{10pt}
+
+Given ranges $a$ and $b$, define $i_a$ as the first bit where $\eqref{010maxor}_a$ occurs.
+
+\begin{equation*}
+i_a = 
+max \, ( \, \{i_1\} \cup 
+\{ i \in I_{i_0} \; : \; aabb_i = *1*1\} )
+\end{equation*}
+
+    where
+\begin{equation*}
+i_0 = max \, \{i \in I_N\; : \; 
+aabb_i = 01*0\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_1 = max \, \{i\in I_N\; : \; 
+aabb_i = 01*1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\vspace{0pt}
+
+if $i_a > i_b$, then
+
+\quad $c_{max} = dn\,(a_{max},i_a) \; \text{\textbar} \; b_{max} $
+
+otherwise if $i_b > -1$,
+
+\quad $c_{max} = a_{min} \; \text{\textbar} \; dn\,(b_{max},i_b) $
+
+otherwise,
+
+\quad $c_{max} = a_{max} \; \text{\textbar} \; b_{max} $
+\vspace{10pt}
+
+Then in C, given ranges $a$ and $b$,
+We can compute $i_a$ as follows:
+\begin{lstlisting}
+#include<stdint.h>
+uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmax){
+    uint32_t xi0 = ~amin & amax & ~bmax;
+\end{lstlisting}
+to find the bits where \eqref{011maxor} occurs.
+Assuming $xi0 \ne 0$, $i_0 = bsr(xi0)$.
+\begin{lstlisting}
+    uint32_t xi1 = ~amin & amax & bmax;
+\end{lstlisting}
+to find the bits not triggered by \eqref{011maxor} where \eqref{010maxor} 
+occurs. 
+Assuming $xi1 \ne 0$, $i_1 = bsr(xi1)$.
+\begin{lstlisting}
+    uint32_t xi01 = ((1 << bsr(xi0|1))-1) & amax & bmax;
+\end{lstlisting}
+to find the bits modified by \eqref{011maxor} which trigger \eqref{010maxor}.
+
+Assuming $xi01 \ne 0$, $i_a = max(i_0, bsr(xi01))$. Without using $max$,
+this can be computed as follows:
+\begin{lstlisting}
+    uint32_t xa = xi1 | xi01;
+    uint32_t ia = bsr(xa|1);
+    return ia;
+}
+\end{lstlisting}
+
+Altogether, the algorithm expressed in C is as follows:
+\begin{lstlisting}
+#include <stdint.h>
+uint32_t maxor(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t xa1 = ~amin&amax&bmax;
+    uint32_t xa0 = ~amin&amax&~bmax;
+    uint32_t xb1 = ~bmin&bmax&amax;
+    uint32_t xb0 = ~bmin&bmax&~amax;
+    xa1 |= ((1 << bsr(xa0|1))-1)&amax&bmax;
+    xb1 |= ((1 << bsr(xb0|1))-1)&amax&bmax;
+    if(xa1 > xb1) amax |= (1 << bsr(xa1|1))-1;
+    else if(xb1 > 0) bmax |= (1 << bsr(xb1|1))-1;
+    return amax|bmax;
+}
+\end{lstlisting}
+
+Note that 
+
+\begin{lstlisting}
+    cmax = (amax|amask)|(bmax|bmask);
+\end{lstlisting}
+
+Can be rearranged to
+
+\begin{lstlisting}
+    cmax = (amax|bmax)|(amask|bmask);
+\end{lstlisting}
+
+Thus we can reduce the code a bit to
+\begin{lstlisting}
+#include <stdint.h>
+uint32_t maxor(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t x1 = (~amin&amax& bmax)|(~bmin&bmax& amax);
+    uint32_t x0 = (~amin&amax&~bmax)|(~bmin&bmax&~amax);
+    x1 |= ((1 << bsr(x0|1))-1)&amax&bmax;
+    return amax|bmax|((1 << bsr(x1|1))-1);
+}
+\end{lstlisting}
+
+
+\section{unsigned $min \{a\&b\}$}
+
+The same basic construction as \ref{maxand} may be used. 
+The interesting differences are:
+
+It follows from \eqref{unsdef} that for $\alpha \in a^i$, $\beta \in b^i$:
+\begin{equation}
+(\alpha \; \text{\&} \; \beta)_i = 0
+\quad \Rightarrow \quad c_{min,i} = 0
+\end{equation}
+
+then from \eqref{dn1}, it follows that 
+\begin{equation}\label{minand}
+c_{min,i} = a^i_{min,i} \; \text{\&}\; b^i_{min,i}
+\end{equation}
+
+then
+\begin{equation*}
+\eqref{01} \rightarrow c_{min,i} = 0
+\end{equation*}
+
+By \eqref{minand},
+\begin{equation*}
+\alpha_i = 0 \vee \beta_i = 0 \quad \Rightarrow \quad c_{min,i} = 0
+\end{equation*}
+Note the similarity to max\{a\textbar b\}, which is
+\begin{equation*}
+\alpha_i = 1 \vee \beta_i = 1 \quad \Rightarrow \quad c_{max,i} = 1
+\end{equation*}
+
+Define 
+\begin{equation*}
+\sim a = [\sim a_{max}, \sim a_{min}]
+\end{equation*}
+Note that $(\sim a)_{min} \le (\sim a)_{max}$ holds. 
+If $a_{min} = a_{max}$, then 
+$(\sim a)_{min} = (\sim a)_{max}$.
+For $a_{min} < a_{max}$, consider the highest bit $i$ where 
+$a_{min,i} \ne a_{max,i}$. By \eqref{01}, it must be that 
+$a_{min,i} = 0 \wedge a_{max,i} = 1$. 
+Then
+$(\sim a)_{min,i} = 0 \wedge (\sim a)_{max,i} = 1$, and 
+$(\sim a)_{min} < (\sim a)_{max}$. 
+
+Define
+\begin{equation*}
+c = max\{\sim a \text{\textbar} \sim b\}
+\end{equation*}
+Then for $\alpha \in (\sim a)$, $\beta \in (\sim b)$,
+\begin{equation*}
+\alpha_i = 1 \vee \beta_i = 1 \quad \Leftrightarrow \quad 
+(\sim \alpha)_i = 0 \vee (\sim \beta)_i = 0
+\end{equation*}
+\begin{equation*}
+(\sim \alpha)_i = 0 \vee (\sim \beta)_i = 0 \quad \Rightarrow \quad 
+(c_i = 1 \quad \Leftrightarrow \quad (\sim c)_i = 0)
+\end{equation*}
+\begin{equation*}
+(\sim \alpha) \in a
+\end{equation*}
+then
+\begin{equation}
+min\{a\text{\&}b\} = 
+\sim max\{\sim a \text{\textbar} \sim b\}
+\end{equation}
+
+\begin{comment}
+For $\eqref{01} \wedge b^i_{min,i} = 0$, $\check a_i $ is unconstrained.
+Since $c_{min}$ will be minimized when $a^j_{min,j} = 0$,
+$\check a_i = 1$ is desireable. Then for
+
+\begin{equation}\label{011minand} 
+a^{i-1} \quad = \quad [up(a^i_{min}, i), a^i_{max}]
+\end{equation}
+
+$\check a \in a^{i-1}$, and \eqref{le1} holds because 
+$a^{i-1}_{min,j} = 0$ for $j<i$. Likewise for $b$.
+\vspace{10pt}
+
+For $\eqref{01} \wedge b^i_{min,i} = 1$, it must be that $\check a_i = 0$. Then for
+\begin{equation}\label{010minand} 
+a^{i-1} \quad = \quad [a^i_{min}, dn(a^i_{max},i)]
+\end{equation}
+
+$\check a \in a^{i-1}$, and \eqref{le1} holds because 
+$a^{i-1}_{max,j} = 1$ for $j<i$. Likewise for $b$.
+\vspace{10pt}
+Now it is \eqref{011minand} that affects the result, and we must find
+the first bit on which it is applied.
+\vspace{10pt}
+
+\begin{tabular}{l|c|c|c|c|l r}
+& $a_{min,i}$ & $a_{max,i}$ & $b_{min,i}$ & $b_{max,i}$ & effect &\\
+\hline
+$\eqref{011minand}_a$ & $0$ & $1$ & $0$ & & $a_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{011minand}_b$ & $0$ & & $0$ & $1$ & $b_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{010minand}_a$ & $0$ & $1$ & $1$ & & $a_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{010minand}_b$ & $1$ & & $0$ & $1$ & $b_{max,j} := 1$, \;& $j < i$ \\
+\end{tabular}
+\vspace{10pt}
+
+Then\\
+$\eqref{011minand}_a$ \quad can trigger \quad $\eqref{011minand}_b$,
+$\eqref{010minand}_a$\\
+$\eqref{011minand}_b$ \quad can trigger \quad $\eqref{011minand}_a$,
+$\eqref{010minand}_b$\\
+$\eqref{010minand}_a$ \quad can trigger \quad $\eqref{011minand}_a$ \\
+$\eqref{010minand}_b$ \quad can trigger \quad $\eqref{011minand}_b$ \\
+
+Because $\eqref{011minand}_b$ sets $b_{min} = 0$ for following bits, then by
+\eqref{minand}, $c_{min,j} = 0$ regardless of $a_{min}$.
+This makes any
+application of $\eqref{011minand}_a$ occurring at bit $j<i$ superfluous. 
+Then we need only find the first of $\eqref{011minand}_a$ and 
+$\eqref{011minand}_b$.
+For $\eqref{011minand}_a$, we need consider
+\begin{equation*} 
+\eqref{010minand}_a \rightarrow \eqref{011minand}_a
+\end{equation*}
+
+Therefore, 
+the algorithm for min\{a\&b\} is:
+
+Given ranges $a$ and $b$, define $i_a$ as the index of the first application 
+of $\eqref{011minand}_a$.
+
+\begin{equation*}
+    i_a = 
+    max \, ( \, \{i_0\} \cup 
+    \{ i \in I_{i_1} \; : \; aabb_i = 0*0*\} 
+    )
+\end{equation*}
+
+    where
+\begin{equation*}
+i_0 = max \, \{i \in I_N\; : \; 
+aabb_i = 010*\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_1 = max \, \{i\in I_N\; : \; 
+aabb_i = 011*\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\vspace{0pt}
+
+if $i_a > i_b$, then
+
+\quad $c_{min} = up\,(a_{min},i_a) \; \text{\&} \; b_{min} $
+
+otherwise if $i_b > -1$,
+
+\quad $c_{min} = a_{min} \; \text{\&} \; up\,(b_{min},i_b) $
+
+otherwise,
+
+\quad $c_{min} = a_{min} \; \text{\&} \; b_{min} $
+
+\vspace{20pt}
+Keeping in mind the optimizations explained circa \ref{oho}, 
+given ranges $a$ and $b$:
+we can compute $i_a$ as follows:
+\begin{lstlisting}
+#include<stdint.h>
+uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmin){
+    uint32_t xi0 = ~amin & amax & ~bmin;
+\end{lstlisting}
+to find the bits unmodified by \eqref{010minand} in which \eqref{011minand} 
+occurs.  Then when $i_0 \ne -1$, $i_0 = bsr(xi0)$.
+\begin{lstlisting}
+    uint32_t xi1 = ~amin & amax & bmin;
+\end{lstlisting}
+to find the bits in which \eqref{010minand} 
+occurs. 
+Then when $i_1 \ne -1$, $i_1 = bsr(xi1)$.
+\begin{lstlisting}
+    uint32_t xi01 = ((1 << bsr(xi1|1))-1) & ~amin & ~bmin;
+\end{lstlisting}
+to find the bits modified by \eqref{010minand} in which \eqref{011minand} occur.
+
+When $i_a \ne -1$, $i_a = max(i_0, bsr(xi01))$. Without using $max$,
+this can be computed as follows:
+\begin{lstlisting}
+    uint32_t xa = xi0 | xi01; 
+    uint32_t ia = bsr(xa|1);
+    return ia;
+}
+\end{lstlisting}
+
+Then, to compute $up(a_{min}, i_a)$:
+\begin{lstlisting}
+uint32_t up(uint32_t amin, uint32_t amax, uint32_t bmin){
+    uint32_t mask = (1 << i_a(amin,amax,bmin))-1;
+    return amin&~mask;
+}
+\end{lstlisting}
+
+Again, setting $a_{min,i} = 1$ has no effect on $c_{min}$, so it is not
+performed.
+
+Altogether, the algorithm expressed in C is as follows:
+\begin{lstlisting}
+#include <stdint.h>
+uint32_t minand(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t xa1 = ~amin& amax& bmin;
+    uint32_t xa0 = ~amin& amax&~bmin;
+    uint32_t xb1 =  amin&     &~bmin& bmax;
+    uint32_t xb0 = ~amin&     &~bmin& bmax;
+    xa0 |= ((1 << bsr(xa1|1))-1)&~amin&~bmin;
+    xb0 |= ((1 << bsr(xb1|1))-1)&~amin&~bmin;
+    if(xa0 > xb0) amin &= ~((1 << bsr(xa0))-1);
+    else bmin &= ~((1 << bsr(xb0))-1);
+    return amin&bmin;
+}
+\end{lstlisting}
+
+Note that 
+
+\begin{lstlisting}
+cmin = (amin&~amask)&(bmin&~bmask);
+\end{lstlisting}
+
+can be rearranged to
+
+\begin{lstlisting}
+cmin = (amin&bmin)&~(amask|bmask);
+\end{lstlisting}
+
+Thus, we can reduce the algorithm a bit to
+\begin{lstlisting}
+#include <stdint.h>
+uint32_t minand(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t x1 = (~amin&amax& bmin)|(~bmin&bmax& amin);
+    uint32_t x0 = (~amin&amax&~bmin)|(~bmin&bmax&~amin);
+    uint32_t imask = x0 | (((1 << bsr(x1|1))-1)&~amin&~bmin);
+    return amin&bmin & ~((1 << bsr(imask|1))-1);
+}
+\end{lstlisting}
+\end{comment}
+
+\section{unsigned $min\{a\text{\textbar} b\}$}
+
+Again, the same basic construction as \ref{maxand} may be used. 
+The interesting differences are:
+
+It follows from \eqref{unsdef} that for $\alpha \in a^i$, $\beta \in b^i$:
+\begin{equation}
+(\alpha \; \text{\textbar} \; \beta)_i = 0
+\quad \Rightarrow \quad c_{min,i} = 0
+\end{equation}
+
+then
+
+\begin{equation*}
+(\alpha_i = 0  \wedge \beta_i = 0) \quad \Rightarrow \quad 
+c_{min,i} = 0
+\end{equation*}
+
+Note the similarity to $max\{a\&b\}$, where
+
+\begin{equation*}
+(\alpha_i = 1  \wedge \beta_i = 1) \quad \Rightarrow \quad 
+c_{max,i} = 1
+\end{equation*}
+
+Define
+\begin{equation*}
+c = max\{\sim a \, \& \sim b\}
+\end{equation*}
+Then for $\alpha \in (\sim a)$, $\beta \in (\sim b)$,
+\begin{equation*}
+\alpha_i = 1 \wedge \beta_i = 1 \quad \Leftrightarrow \quad 
+(\sim \alpha)_i = 0 \wedge (\sim \beta)_i = 0
+\end{equation*}
+\begin{equation*}
+(\sim \alpha)_i = 0 \wedge (\sim \beta)_i = 0 \quad \Rightarrow \quad 
+(c_i = 1 \quad \Leftrightarrow \quad (\sim c)_i = 0)
+\end{equation*}
+\begin{equation*}
+(\sim \alpha) \in a, (\sim \beta) \in b
+\end{equation*}
+then
+\begin{equation}
+min\{a\text{\textbar}b\} = \,
+\sim max\{\sim a \, \& \sim b\}
+\end{equation}
+
+\begin{comment}
+then from \eqref{up1}, it follows that 
+\begin{equation}\label{minor}
+c_{min,i} = a^i_{min,i} \; \text{\textbar}\; b^i_{min,i}
+\end{equation}
+
+Then
+\begin{equation*}
+\eqref{01} \quad \Rightarrow \quad 
+(c_{min,i} = 1 \quad \Leftrightarrow \quad b^i_{min,i} = 1)
+\end{equation*}
+For $\eqref{01} \wedge b^i_{min,i} = 1$, then $\check a_i$ is unconstrained.
+Since $c_{min}$ is minimized when $a^j_{min,j} = 0$,
+$\check a_i = 1$ is desirable.
+Then 
+\begin{equation}\label{011minor} 
+a^{i-1} \quad = \quad [up(a^i_{min}, i), a^i_{max}]
+\end{equation}
+
+Likewise for $b$.
+\vspace{10pt}
+
+For $\eqref{01} \wedge b^i_{min,i} = 0$, $\check a_i = 0$ must be true.
+Then
+\begin{equation}\label{010minor} 
+a^{i+1} \quad = \quad [a^i_{min}, dn(a^i_{max},i)]
+\end{equation}
+
+Likewise for $b$.
+\vspace{10pt}
+
+Now it is \eqref{011minor} that affects the result, so
+the first occurrence of it must be found.
+\vspace{10pt}
+
+\begin{tabular}{l|c|c|c|c|l r}
+& $a_{min,i}$ & $a_{max,i}$ & $b_{min,i}$ & $b_{max,i}$ & effect &\\
+\hline
+$\eqref{011minor}_a$ & $0$ & $1$ & $1$ & & $a_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{011minor}_b$ & $1$ & & $0$ & $1$ & $b_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{010minor}_a$ & $0$ & $1$ & $0$ & & $a_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{010minor}_b$ & $0$ & & $0$ & $1$ & $b_{max,j} := 1$, \;& $j < i$ \\
+\end{tabular}
+\vspace{10pt}
+
+Then\\
+$\eqref{011minor}_a$ \quad can trigger \quad $\eqref{010minor}_a$,
+$\eqref{010minor}_b$\\
+$\eqref{011minor}_b$ \quad can trigger \quad $\eqref{010minor}_a$,
+$\eqref{010minor}_b$\\
+$\eqref{010minor}_a$ \quad can trigger \quad $\eqref{011minor}_a$ \\
+$\eqref{010minor}_b$ \quad can trigger \quad $\eqref{011minor}_b$ \\
+
+It can be seen that $\eqref{011minor}_a$ cannot succeed $\eqref{011minor}_b$, 
+and vice versa.
+Then the possible dependency chains for $\eqref{011minor}_a$ are
+\begin{equation*} 
+\eqref{010minor}_a \rightarrow \eqref{011minor}_a
+\end{equation*}
+
+Therefore, the algorithm may be rewritten as follows:
+
+Given ranges $a$ and $b$, define $i_a$ as the index of the first occurrence
+of $\eqref{011minor}_a$.
+\begin{equation*}
+i_a = max \, ( \, \{i_1\} \cup \{i \in I_{i_0}\; : \; 
+        aabb_i = 0*1*\} \, ) 
+\end{equation*}
+    where
+\begin{equation*}
+i_0 = max \, \{i \in I_N\; : \; 
+aabb_i = 010*\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_1 = max \, \{i\in I_N\; : \; 
+aabb_i = 011*\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\vspace{0pt}
+
+if $i_a > i_b$, then
+
+\quad $c_{min} = up\,(a_{min},i_a) \; \text{\&} \; b_{min} $
+
+otherwise if $i_b > -1$,
+
+\quad $c_{min} = a_{min} \; \text{\&} \; up\,(b_{min},i_b) $
+
+otherwise,
+
+\quad $c_{min} = a_{min} \; \text{\&} \; b_{min} $
+
+Keeping in mind the optimizations explained circa \ref{oho}, 
+we can compute $i_a$ as follows:
+\begin{lstlisting}
+#include<stdint.h>
+uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmin){
+    uint32_t xi0 = ~amin & amax & ~bmin;
+\end{lstlisting}
+to find the bits at which \eqref{010minor} occurs.
+When $i_0 \ne -1$, $i_0 = bsr(xi0)$.
+\begin{lstlisting}
+    uint32_t xi1 = ~amin & amax & bmin;
+\end{lstlisting}
+to find the bits unmodified by \eqref{010minor} at which \eqref{011minor} 
+occurs. 
+When $i_1 \ne -1$, $i_1 = bsr(xi1)$.
+\begin{lstlisting}
+    uint32_t xi01 = ((1 << bsr(xi1|1))-1) & ~amin & bmin;
+\end{lstlisting}
+to find the bits modified by \eqref{010minor} at which \eqref{011minor} occurs.
+
+When $i_a \ne -1$, $i_a = max(i_0, bsr(xi01))$. Without using $max$,
+this can be computed as follows:
+\begin{lstlisting}
+    uint32_t xa = xi0 | xi01;
+    uint32_t ia = bsr(xa|1);
+    return ia;
+}
+\end{lstlisting}
+
+Altogether, the algorithm expressed in C is as follows:
+\begin{lstlisting}
+#include <stdint.h>
+uint32_t maxand(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t xa1 = ~amin&amax& bmin;
+    uint32_t xa0 = ~amin&amax&~bmin;
+    uint32_t xb1 =  amin&    &~bmin& bmax;
+    uint32_t xb0 = ~amin&    &~bmin& bmax;
+    xa1 |= ((1 << bsr(xa0|1))-1)&~amin&bmin;
+    xb1 |= ((1 << bsr(xb0|1))-1)&~bmin&amin;
+    if(xa1 > xb1) amin &= ~((1 << bsr(xa1|1))-1);
+    else  bmin &= ~((1 << bsr(xb1|1))-1);
+    return amin|bmin;
+}
+\end{lstlisting}
+\end{comment}
+
+\section{unsigned $max\{a$\^{}$b\}$}
+
+Again, the same basic construction as \ref{maxand} may be used. 
+The interesting differences are:
+
+It follows from \eqref{unsdef} that for $\alpha \in a^i$, $\beta \in b^i$:
+\begin{equation}
+(\alpha \; \text{\^{}} \; \beta)_i = 1
+\quad \Rightarrow \quad c_{max,i} = 1
+\end{equation}
+
+then this one is tricky. Decomposed:
+\begin{equation*}
+(\alpha_i = 1 \wedge \beta_i = 0) \vee (\alpha_i = 0 \wedge \beta_i = 1) 
+\quad \Rightarrow \quad c_{max,i} = 1
+\end{equation*}
+
+note that
+\begin{equation}\label{dn1}
+a^i_{min, i} = 0 \quad \Rightarrow \quad \alpha_i = 0 \quad 
+\text{for some} \; \alpha \in a^i
+\end{equation}
+Then by \eqref{up1} and \eqref{dn1},
+\begin{equation}\label{maxxor}
+c_{max,i} = (a^i_{max,i} \; \text{\^{}}\; b^i_{min,i}) 
+\text{\textbar} (a^i_{min,i} \; \text{\^{}}\; b^i_{max,i}) 
+\end{equation}
+
+Then by \eqref{le1} through \eqref{11}, it can be shown that
+\begin{equation*}
+\eqref{01} \quad \Rightarrow \quad 
+c_{max,i} = 1 
+\end{equation*}
+
+For $\eqref{01} \wedge b^i_{max,i} = 0$, 
+then $ \hat a_i = 1$ must be true.
+Then
+\begin{equation}\label{0100maxxor} 
+a^{i-1} \quad = \quad [up(a^i_{min}, i), a^i_{max}]
+\end{equation}
+
+Likewise for $b$.
+\vspace{10pt}
+
+For $\eqref{01}  \wedge  b^i_{min,i} = 1$, 
+then $\hat a_i = 0$ must be true.
+Then
+\begin{equation}\label{0111maxxor} 
+a^{i-1} \quad = \quad [a^i_{min}, dn(a^i_{max},i)]
+\end{equation}
+
+Likewise for $b$.
+\vspace{10pt}
+
+For $\eqref{01}_a  \wedge  \eqref{01}_b$, there is no imposed constraint.
+In order to maximize $c_{max,j}$ for $j<i$, 
+we choose $\hat a_i = 0$, and $\hat b_i = 1$.
+Then
+\begin{equation}\label{0101maxxor}
+\begin{tabular}{c}
+$a^{i-1} \quad = \quad [a^i_{min}, dn(a^i_{max},i)]$\\
+$b^{i-1} \quad = \quad [up(b^i_{min},i), b^i_{max}]$
+\end{tabular}
+\end{equation}
+
+Now any of \eqref{0100maxxor}, \eqref{0111maxxor}, or \eqref{0101maxxor} 
+may affect the result, though \eqref{0101maxxor}
+is a special case.
+So we must find the first occurrences of 
+\eqref{0100maxxor} and \eqref{0111maxxor}.
+
+\begin{tabular}{l|c|c|c|c|l r}
+& $a_{min,i}$ & $a_{max,i}$ & $b_{min,i}$ & $b_{max,i}$ & effect &\\
+\hline
+$\eqref{0100maxxor}_a$ & $0$ & $1$ & $0$ & $0$ & 
+$a_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{0100maxxor}_b$ & $0$ & $0$ & $0$ & $1$ & 
+$b_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{0111maxxor}_a$ & $0$ & $1$ & $1$ & $1$ & 
+$a_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{0111maxxor}_b$ & $1$ & $1$ & $0$ & $1$ & 
+$b_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{0101maxxor}$ & $0$ & $1$ & $0$ & $1$ & 
+$c_{max,j} := 1$, \;& $j < i$ \\
+\end{tabular}
+\vspace{10pt}
+
+Then\\
+$\eqref{0100maxxor}_a$ \quad can trigger \quad $\eqref{0100maxxor}_b$,
+$\eqref{0111maxxor}_a$, $\eqref{0101maxxor}$\\
+$\eqref{0100maxxor}_b$ \quad can trigger \quad $\eqref{0100maxxor}_a$,
+$\eqref{0111maxxor}_b$, $\eqref{0101maxxor}$\\
+$\eqref{0111maxxor}_a$ \quad can trigger \quad $\eqref{0100maxxor}_a$,
+$\eqref{0111maxxor}_b$, $\eqref{0101maxxor}$\\
+$\eqref{0111maxxor}_b$ \quad can trigger \quad $\eqref{0100maxxor}_b$,
+$\eqref{0111maxxor}_a$, $\eqref{0101maxxor}$\\
+
+It can be seen that $\eqref{0111maxxor}_b$ cannot succeed or precede
+$\eqref{0100maxxor}_a$. 
+Then the possible dependency chains for the first application of 
+$\eqref{0100maxxor}_a$ and $\eqref{0111maxxor}_a$ are:
+\begin{equation*} 
+\eqref{0100maxxor}_b \rightarrow \eqref{0100maxxor}_a
+\end{equation*}
+\begin{equation*} 
+\eqref{0111maxxor}_a \rightarrow \eqref{0100maxxor}_a
+\end{equation*}
+\begin{equation*} 
+\eqref{0100maxxor}_a \rightarrow 
+\eqref{0111maxxor}_a
+\end{equation*}
+\begin{equation*} 
+\eqref{0111maxxor}_b \rightarrow 
+\eqref{0111maxxor}_a
+\end{equation*}
+
+And likewise for $b$.
+
+Any single or pair of applications above can trigger
+\eqref{0101maxxor}, and none can invalidate 
+\eqref{0101maxxor}.
+
+\vspace{10pt}
+
+Then given ranges $a$ and $b$,
+\vspace{10pt}
+
+Define 
+\begin{tabular}{l}
+$i_a$ as the first bit where $\eqref{0100maxxor}_a$ occurs\\
+$j_a$ as the first bit where $\eqref{0111maxxor}_a$ occurs\\
+$k$ as the first bit where $\eqref{0101maxxor}$ occurs
+\end{tabular}
+\begin{equation*}
+i_a = 
+max \, ( \, \{i_{a00}\} \cup 
+\{i \in I_{i_{b00}}\; : \; aabb_i = 01*0\} \, \cup
+\{i \in I_{i_{a11}}\; : \; aabb_i = 0*00\} 
+) 
+\end{equation*}
+\begin{equation*}
+j_a = 
+max \, ( \, \{i_{a11}\} \cup 
+\{i \in I_{i_{a00}}\; : \; aabb_i = *111\} \, \cup
+\{i \in I_{i_{b11}}\; : \; aabb_i = 011*\} 
+) 
+\end{equation*}
+\begin{equation*}
+k = max \, 
+\left(
+\begin{tabular}{l c}
+\huge $\cup$ \normalsize
+\begin{tabular}{c}
+$\{i_{ab}\}$\\
+$\{i \in I_{i_{a00}}\; : \; aabb_i = *101\} $\\
+$\{i \in I_{i_{b00}}\; : \; aabb_i = 01*1\} $\\
+$\{i \in I_{i_{a11}}\; : \; aabb_i = 0*01\} $\\
+$\{i \in I_{i_{b11}}\; : \; aabb_i = 010*\} $\\
+\end{tabular}
+\end{tabular}
+\right)
+\end{equation*}
+
+    where
+\begin{equation*}
+i_{a00} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,1,0,0\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{b00} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,0,0,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{a11} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,1,1,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{b11} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 1,1,0,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{ab} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,1,0,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+
+
+given ranges $a,b$
+
+if $i_a > j_b$, then
+
+\quad $\bar a_{min} = up\,(a_{min},i_a) $
+
+\quad $\bar b_{max} = b_{max}$
+
+otherwise,
+
+\quad $\bar a_{min} = a_{min} $
+
+\quad if $j_b > -1$, then
+
+\quad\quad $\bar b_{max} = dn\,(b_{max},j_b) $
+
+likewise for b
+
+if $k > -1$, then
+
+\quad $m = dn(0,k)$
+
+otherwise,
+
+\quad $m = 0$
+
+$c_{max} = (\bar a_{min} \; \text{\^{}} \; \bar b_{max})\;|\;(\bar a_{max} \; 
+\text{\^{}} \; \bar b_{min})\;|\; m $
+
+\vspace{10pt}
+
+Then in C, given ranges $a$ and $b$,
+keeping in mind the optimizations explained circa \ref{oho}:
+
+\begin{lstlisting}
+uint32_t maxxor(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t xa00 = (~amin& amax&~bmin&~bmax);
+    uint32_t xb00 = (~amin&~amax&~bmin& bmax);
+    uint32_t xa11 = (~amin& amax& bmin& bmax);
+    uint32_t xb11 = ( amin& amax&~bmin& bmax);
+    uint32_t xab  = (~amin& amax&~bmin& bmax);
+    uint32_t xia  = xa00 | (((1 << bsr(xb00|1))-1)&~amin& amax&~bmax) 
+                         | (((1 << bsr(xa11|1))-1)&~amin&~bmin&~bmax);
+    uint32_t xib  = xb00 | (((1 << bsr(xa00|1))-1)&~bmin& bmax&~amax) 
+                         | (((1 << bsr(xb11|1))-1)&~bmin&~amin&~amax);
+    uint32_t xja  = xa11 | (((1 << bsr(xa00|1))-1)& amax& bmin& bmax) 
+                         | (((1 << bsr(xb11|1))-1)&~amin& amax& bmin);
+    uint32_t xjb  = xb11 | (((1 << bsr(xb00|1))-1)& bmax& amin& amax) 
+                         | (((1 << bsr(xa11|1))-1)&~bmin& bmax& amin);
+    uint32_t xk   = xab  | (((1 << bsr(xia |1))-1)& amax&~bmin& bmax)
+                         | (((1 << bsr(xib |1))-1)& bmax&~amin& amax)
+                         | (((1 << bsr(xja |1))-1)&~amin& amax&~bmin)
+                         | (((1 << bsr(xjb |1))-1)&~bmin& bmax&~amin);
+    // todo: why do these all have to run always?
+    amin &= ~((1 << bsr(xia|1))-1);
+    bmax |=  ((1 << bsr(xjb|1))-1);
+    bmin &= ~((1 << bsr(xib|1))-1);
+    amax |=  ((1 << bsr(xja|1))-1);
+
+    return (amin ^ bmax) | (amax ^ bmin) | ((1 << bsr(xk|1))-1);
+}
+\end{lstlisting}
+
+\section{unsigned $min\{a$\^{}$b\}$}
+
+Again, the same basic construction as \ref{maxand} may be used for this one. 
+The interesting differences are:
+
+It follows from \eqref{unsdef} that for $\alpha \in a$, $\beta \in b$:
+\begin{equation}
+(\alpha \; \text{\^{}} \; \beta)_i = 0
+\quad \Rightarrow \quad c_{min,i} = 0
+\end{equation}
+
+then:
+\begin{equation*}
+(\alpha_i = 0 \wedge \beta_i = 0) \vee (\alpha_i = 1 \wedge \beta_i = 1) 
+\quad \Rightarrow \quad c_{min,i} = 0
+\end{equation*}
+
+By \eqref{up1} and \eqref{dn1},
+\begin{equation*}
+(a_{min,i} = 0 \wedge b_{min,i} = 0) \vee (a_{max,i} = 1 \wedge b_{max,i} = 1) 
+\quad \Rightarrow \quad c_{min,i} = 0
+\end{equation*}
+Then:
+\begin{equation}\label{minxor}
+c_{min,i} = (a_{min,i} \; \text{\^{}}\; b_{min,i}) 
+\text{\&} (a_{max,i} \; \text{\^{}}\; b_{max,i}) 
+\end{equation}
+
+By \eqref{le1}, it can be shown that
+\begin{equation*}
+\eqref{01} \quad \Rightarrow \quad 
+c_{min,i} = 0 
+\end{equation*}
+For $\eqref{01} \wedge b_{min,i} = 1 \wedge b_{max,i} = 1$, 
+then $ \check a_i = 1$ must be true.
+Therefore the range $[up(a_{min}, i), a_{max}]$ certainly contains $\check a$.
+
+Then, for this case, 
+\begin{equation}\label{0111minxor} 
+a \quad \text{becomes} \quad [up(a_{min}, i), a_{max}]
+\end{equation}
+
+Note that now \eqref{le1} holds for any $j < i$ because $a_{min,j} = 0$. 
+
+Likewise for $b$.\\
+For $\eqref{01}  \wedge  b_{min,i} = 0 \wedge b_{max,i} = 0$, 
+then $\check a_i = 0$ must be true.
+Therefore the range $[a_{min}, dn(a_{max},i)]$ certainly contains $\check a$.
+
+Then, for this case, 
+\begin{equation}\label{0100minxor} 
+a \quad \text{becomes} \quad [a_{min}, dn(a_{max},i)]
+\end{equation}
+
+Note that now \eqref{le1} holds for any $j < i$, because $a_{max,j} = 1$.
+
+Likewise for $b$.\\
+For $\eqref{01}_a  \wedge  \eqref{01}_b$, there is no imposed constraint.
+In order to minimize $c_{max,j}$ for $j<i$, 
+we choose to constrain $\hat a_i = 0$, and $\hat b_i = 0$.
+Then, for this case, 
+\begin{equation}\label{0101minxor}
+\begin{tabular}{c}
+$a \quad \text{becomes} \quad [a_{min}, dn(a_{max},i)]$\\
+$b \quad \text{becomes} \quad [b_{min}, dn(b_{max},i)]$
+\end{tabular}
+\end{equation}
+
+Note that now \eqref{le1} holds for any $j < i$, because $a_{max,j} = 1$ and likewise for $b$.
+
+Now any of \eqref{0111minxor}, \eqref{0100minxor}, or \eqref{0101minxor} 
+may affect the result, though \eqref{0101minxor}
+is a special case.
+So the ways of triggering both
+\eqref{0111minxor} and \eqref{0100minxor}
+must be considered. 
+\vspace{10pt}
+
+\begin{tabular}{l|c|c|c|c|l r}
+& $a_{min,i}$ & $a_{max,i}$ & $b_{min,i}$ & $b_{max,i}$ & effect &\\
+\hline
+$\eqref{0111minxor}_a$ & $0$ & $1$ & $1$ & $1$ & 
+$a_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{0111minxor}_b$ & $1$ & $1$ & $0$ & $1$ & 
+$b_{min,j} := 0$, \;& $j < i$ \\
+\hline
+$\eqref{0100minxor}_a$ & $0$ & $1$ & $0$ & $0$ & 
+$a_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{0100minxor}_b$ & $0$ & $0$ & $0$ & $1$ & 
+$b_{max,j} := 1$, \;& $j < i$ \\
+\hline
+$\eqref{0101minxor}$ & $0$ & $1$ & $0$ & $1$ & 
+$c_{min,j} := 0$, \;& $j < i$ \\
+\end{tabular}
+\vspace{10pt}
+
+Then\\
+$\eqref{0111minxor}_a$ \quad can trigger \quad $\eqref{0100minxor}_a$,
+$\eqref{0100minxor}_b$, $\eqref{0101minxor}$\\
+$\eqref{0111minxor}_b$ \quad can trigger \quad $\eqref{0100minxor}_a$,
+$\eqref{0100minxor}_b$, $\eqref{0101minxor}$\\
+$\eqref{0100minxor}_a$ \quad can trigger \quad $\eqref{0111minxor}_a$,
+$\eqref{0111minxor}_b$, $\eqref{0101minxor}$\\
+$\eqref{0100minxor}_b$ \quad can trigger \quad $\eqref{0111minxor}_a$,
+$\eqref{0111minxor}_b$, $\eqref{0101minxor}$\\
+
+Note that $\eqref{0100minxor}_b$ will cause $b_{max} = 1$ for 
+following bits, and
+$\eqref{0100minxor}_a$ at $j$ requires $b_{max,j} = 0$, and
+$\eqref{0111minxor}_b$ will cause $b_{min} = 0$ for following bits
+and $\eqref{0111minxor}_a$ requires $b_{min} = 1$, and vice versa,
+therefore 
+$\eqref{0111minxor}_a$ and
+$\eqref{0111minxor}_b$ cannot coexist in the same dependency chain, and
+neither can $\eqref{0100minxor}_a$ and $\eqref{0100minxor}_b$.
+Then the possible dependency chains for the first application of 
+$\eqref{0111minxor}_a$ and $\eqref{0100minxor}_a$ are:
+\begin{equation*} 
+\eqref{0100minxor}_a \rightarrow 
+\eqref{0111minxor}_a
+\end{equation*}
+\begin{equation*} 
+\eqref{0100minxor}_b \rightarrow 
+\eqref{0111minxor}_a
+\end{equation*}
+\begin{equation*} 
+\eqref{0111minxor}_a \rightarrow 
+\eqref{0100minxor}_a
+\end{equation*}
+\begin{equation*} 
+\eqref{0111minxor}_b \rightarrow 
+\eqref{0100minxor}_a
+\end{equation*}
+
+And likewise for $b$.
+
+Any single or pair of applications above can trigger
+\eqref{0101minxor}, and none can invalidate 
+\eqref{0101minxor}.
+
+\vspace{10pt}
+
+Then: for range $a$,
+\vspace{10pt}
+
+Define 
+\begin{tabular}{l}
+$i_a$ as the first bit where $\eqref{0111minxor}_a$ occurs\\
+$j_a$ as the first bit where $\eqref{0100minxor}_a$ occurs\\
+$k$ as the first bit where $\eqref{0101minxor}$ occurs
+\end{tabular}
+\begin{equation*}
+i_a = 
+max \, ( \, \{i_{a11}\} \cup 
+\{i \in I_{i_{a00}}\; : \; a_{min,i},b_{min,i},b_{max,i} = 0,1,1\} \, \cup
+\{i \in I_{i_{b00}}\; : \; a_{min,i},a_{max,i},b_{min,i} = 0,1,1\} 
+) 
+\end{equation*}
+\begin{equation*}
+j_a = 
+max \, ( \, \{i_{a00}\} \cup 
+\{i \in I_{i_{a11}}\; : \; a_{max,i},b_{min,i},b_{max,i} = 1,0,0\} \, \cup
+\{i \in I_{i_{b11}}\; : \; a_{min,i},a_{max,i},b_{max,i} = 0,1,0\} 
+) 
+\end{equation*}
+\begin{equation*}
+k = max \, 
+\left(
+\begin{tabular}{l c}
+\huge $\cup$ \normalsize
+\begin{tabular}{c}
+$\{i_{ab}\}$\\
+$\{i \in I_{i_{a11}}\; : \; a_{max,i},b_{min,i},b_{max,i} = 1,0,1\} $\\
+$\{i \in I_{i_{b}}\; : \; a_{min,i},a_{max,i},b_{max,i} = 0,1,1\} $\\
+$\{i \in I_{j_{a}}\; : \; a_{min,i},b_{min,i},b_{max,i} = 0,0,1\} $\\
+$\{i \in I_{j_{b}}\; : \; a_{min,i},a_{max,i},b_{min,i} = 0,1,0\} $\\
+\end{tabular}
+\end{tabular}
+\right)
+\end{equation*}
+
+    where
+\begin{equation*}
+i_{a00} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,1,0,0\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{b00} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,0,0,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{a11} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,1,1,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{b11} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 1,1,0,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+\begin{equation*}
+i_{ab} = max \, \{i \in I_N\; : \; 
+a_{min,i}, a_{max,i},b_{min,i},b_{max,i} = 0,1,0,1\},\,
+\text{or $-1$ if the set is empty}
+\end{equation*}
+
+
+given ranges $a,b$
+
+if $i_a > i_b$, then
+
+\quad $\bar a_{min} = up\,(a_{min},i_a) $
+
+\quad $\bar b_{min} = b_{min}$
+
+otherwise,
+
+\quad $\bar a_{min} = a_{min} $
+
+\quad if $i_b > -1$, then
+
+\quad\quad $\bar b_{min} = up\,(b_{min},i_b) $
+
+if $j_a > j_b$, then
+
+\quad $\bar a_{max} = dn\,(a_{max},j_a) $
+
+\quad $\bar b_{max} = b_{max}$
+
+otherwise,
+
+\quad $\bar a_{max} = a_{max} $
+
+\quad if $j_b > -1$, then
+
+\quad\quad $\bar b_{max} = dn\,(b_{max},j_b) $
+
+if $k > -1$, then
+
+\quad $m = dn(0,k)$
+
+otherwise,
+
+\quad $m = 0$
+
+$c_{min} = (\bar a_{min} \; \text{\^{}} \; \bar b_{min})\;\&\;(\bar a_{max} \; 
+\text{\^{}} \; \bar b_{max})\;\&\; \text{\~{}} m $
+
+\vspace{10pt}
+
+Then in C, given ranges $a$ and $b$,
+keeping in mind the optimizations explained circa \ref{oho}:
+\begin{lstlisting}
+uint32_t minxor(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
+    uint32_t xa00 = (~amin& amax&~bmin&~bmax);
+    uint32_t xb00 = (~amin&~amax&~bmin& bmax);
+    uint32_t xa11 = (~amin& amax& bmin& bmax);
+    uint32_t xb11 = ( amin& amax&~bmin& bmax);
+    uint32_t xab  = (~amin& amax&~bmin& bmax);
+    uint32_t xa00a11 = (((1 << bsr(xa00|1))-1)&~amin&       bmin& bmax);
+    uint32_t xa00b11 = (((1 << bsr(xa00|1))-1)& amin&      ~bmin& bmax);
+    uint32_t xb00a11 = (((1 << bsr(xb00|1))-1)&~amin& amax& bmin      );
+    uint32_t xb00b11 = (((1 << bsr(xb00|1))-1)& amin& amax&~bmin      );
+    uint32_t xa11a00 = (((1 << bsr(xa11|1))-1)      & amax&~bmin&~bmax);
+    uint32_t xb11a00 = (((1 << bsr(xb11|1))-1)&~amin& amax      &~bmax);
+    uint32_t xa11b00 = (((1 << bsr(xa11|1))-1)      &~amax&~bmin& bmax);
+    uint32_t xb11b00 = (((1 << bsr(xb11|1))-1)&~amin&~amax      & bmax);
+    uint32_t xia  = xa11 | xa00a11 | xb00a11;
+    uint32_t xib  = xb11 | xa00b11 | xb00b11;
+    uint32_t xja  = xa00 | xa11a00 | xb11a00; 
+    uint32_t xjb  = xb00 | xa11b00 | xb11b00;
+
+    uint32_t xk   = xab  | (((1 << bsr(xa00|1))-1)   &~amin&      ~bmin& bmax)
+                         | (((1 << bsr(xb00|1))-1)   &~amin& amax&~bmin)
+                         | (((1 << bsr(xa11|1))-1)         & amax&~bmin& bmax)
+                         | (((1 << bsr(xb11|1))-1)   &~amin& amax      & bmax)
+
+                         | (((1 << bsr(xa00a11|xa11a00|1))-1)            &~bmin& bmax)
+                         | (((1 << bsr(xa00b11|xb11a00|1))-1)&~amin            & bmax)
+                         | (((1 << bsr(xb00a11|xa11b00|1))-1)      & amax&~bmin      )
+                         | (((1 << bsr(xb00b11|xb11b00|1))-1)&~amin& amax            );
+                     
+    if (xia > xib){
+        amin &= ~((1 << bsr(xia|1))-1);
+    }else{
+        bmin &= ~((1 << bsr(xib|1))-1);
+    }
+    if (xja > xjb){
+        amax |=  ((1 << bsr(xja|1))-1);
+    }else {
+        bmax |=  ((1 << bsr(xjb|1))-1);
+    }
+
+    return (amin ^ bmin) & (amax ^ bmax) & ~((1 << bsr(xk|1))-1);
+}
+\end{lstlisting}
+
+\section{signed max \{a\&b\}}
+To maximize a signed range is somewhat more 
+complicated than for unsigned. For $\alpha \in B_N$, it can be shown that
+\begin{equation}\label{g0}
+\alpha_{N-1} = 0 \quad \Rightarrow \quad \alpha \ge 0
+\end{equation}
+\begin{equation}\label{l0}
+\alpha_{N-1} = 1 \quad \Rightarrow \quad \alpha < 0
+\end{equation}
+
+For both, the maximum and minimum are obtained by setting 
+subsequent bits to $1$ and $0$, respectively. 
+
+Therefore, for $\alpha \in a, \beta \in b$, and $i < N-1$,
+\begin{equation} \label{sand0}
+(\alpha \& \beta)_{N-1} = 0 \quad \Rightarrow \quad c_{max, N-1} = 0
+\end{equation}
+\begin{equation}
+(\alpha\&\beta)_i = 1 \quad \Rightarrow \quad 
+c_{max,i} = 1
+\end{equation}
+
+Note this corresponds to $unsigned \, max\{a\&b\}$.
+
+The possibilities for $a_{min,N-1}$ and $a_{max,N-1}$ are 
+slightly different 
+than for $a^i_{min,i}$ and $a^i_{max,i}$:
+\begin{equation}\label{11s} 
+a_{min,N-1},a_{max,N-1} = 1,1
+\end{equation}
+\begin{equation}\label{10s} 
+a_{min,N-1},a_{max,N-1} = 1,0
+\end{equation}
+\begin{equation}\label{00s} 
+a_{min,N-1}, a_{max,N-1} = 0,0
+\end{equation}
+
+Now we have
+\begin{equation}\label{sup1}
+a_{max,N-1} = 0 \quad \Rightarrow \quad \alpha_i = 0 \quad 
+\text{for some} \; \alpha \in a
+\end{equation}
+\begin{equation}\label{sdn1}
+a_{min,N-1} = 1 \quad \Rightarrow \quad \alpha_i = 1 \quad 
+\text{for some} \; \alpha \in a
+\end{equation}
+
+Then by \eqref{sand0}
+\begin{equation*}
+c_{max,N-1} = a_{max,N-1} \& b_{max,N-1}
+\end{equation*}
+
+For signed integers at bit $N-1$, $up$ and $dn$ may not have the desired 
+effect. Note that now $\vec 0$ is the smallest integer with bit $N-1$ set 
+to $0$, and $\vec 1$ is the largest integer with bit $N-1$ set to $1$.
+
+These definitions maintain $up(a)$ is the smallest signed integer with bit 
+$N-1$ set to $0$, and $dn(a)$ is the largest signed integer with bit 
+$N-1$ set to $1$.
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 00$, $\hat a_{N-1}$ is unconstrained,
+but $a_i = 1$ will help to maximize $c_{max}$, so
+
+\begin{equation*}
+a^{N-2} = [a_{min}, \vec 1]
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 11$, it must be that $\hat a_{N-1} = 0$,
+therefore
+
+\begin{equation*}
+a^{N-2} = [\vec 0, a_{max}]
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 10$, then we need at least
+one of $\hat a_{N-1} = 0$, $\hat b_{N-1} = 0$. However, we would also like
+$a_{max,i} = 1$ and $b_{max,i} = 1$ for to maximize $c_{max}$. 
+Therefore, suppose we choose $\hat a_{N-1} = 1$. Then $a^{N-2}_{max} = \vec 1$.
+Note this has the effect that $s(c_{max},N-2) = s(b_{max},N-2)$. 
+Obviously, this only maximizes $c_{max}$ when $s(a_{max},N-2) \le 
+s(b_{max},N-2)$.
+
+Therefore, when $a_{max} \ge b_{max}$
+\begin{equation*}
+a^{N-2} = [\vec 0, a_{max}]
+\end{equation*}
+\begin{equation*}
+b^{N-2} = [b_{min}, \vec 1]
+\end{equation*}
+
+When $a_{max} < b_{max}$
+\begin{equation*}
+a^{N-2} = [a_{min}, \vec 1]
+\end{equation*}
+\begin{equation*}
+b^{N-2} = [\vec 0, b_{max}]
+\end{equation*}
+
+Then the algorithm for unsigned may be used, however we may need to constrain
+the high bit to satisfy \eqref{sand0}. Thus: 
+\begin{lstlisting}
+int32_t maxand_s(int32_t amin, int32_t amax, int32_t bmin, int32_t bmax){
+    int32_t a0 = amin & ~amax &  bmax & 0x80000000;
+    int32_t a1 = amin & ~amax & ~bmin & 0x80000000;
+    int32_t b0 = bmin & ~bmax &  amax & 0x80000000;
+    int32_t b1 = bmin & ~bmax & ~amin & 0x80000000;
+    int32_t ab = amin & ~amax & bmin & ~bmax & 0x80000000;
+    if( a1 || (ab && amax <  bmax)) amax = -1;
+    if( a0 || (ab && amax >= bmax)) amin = 0;
+    if( b1 || (ab && amax >= bmax)) bmax = -1;
+    if( b0 || (ab && amax <  bmax)) bmin = 0;
+    return maxand(amin, amax, bmin, bmax);
+}
+\end{lstlisting}
+
+\section{signed max\{a\text{\textbar}b\}}
+
+For $\alpha \in a, \beta \in b$, and $i < N-1$,
+
+\begin{equation} 
+(\alpha \text{\textbar} \beta)_{N-1} = 0 \quad \Rightarrow \quad 
+c_{max, N-1} = 0
+\end{equation}
+\begin{equation}
+(\alpha\text{\textbar}\beta)_i = 1 
+\quad \Rightarrow \quad 
+c_{max,i} = 1
+\end{equation}
+
+Then
+
+\begin{equation*}
+c_{max,N-1} = a_{max,N-1} \text{\textbar} b_{max,N-1}
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 10$, we must have 
+$\hat a_{N-1} = 0$ and likewise for $b$ for $c_{max,N-1} = 0$. 
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 00$, then 
+$\hat a_{N-1} = 0$ to maximize $c_{max}$.
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 11$, then $\hat a_{N-1}$ 
+is unconstrained, however $c_{max}$ is maximized when $\hat a_i = 1$. 
+
+So for $\eqref{10s} \wedge b_{max,N-1} = 0$, 
+\begin{equation*}
+a^{N-2} = [\vec 0, a_{max}]
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{max,N-1} = 1$, 
+\begin{equation*}
+a^{N-2} = [a_{min},\vec 1]
+\end{equation*}
+
+\begin{lstlisting}
+int32_t maxor_s(int32_t amin, int32_t amax, int32_t bmin, int32_t bmax){
+    int32_t a1 = (amin & ~amax &  bmax) & 0x80000000;
+    int32_t a0 = (amin & ~amax & ~bmax) & 0x80000000;
+    int32_t b1 = (bmin & ~bmax &  amax) & 0x80000000;
+    int32_t b0 = (bmin & ~bmax & ~amax) & 0x80000000;
+    if( a1 ) amax = -1;
+    if( a0 ) amin = 0;
+    if( b1 ) bmax = -1;
+    if( b0 ) bmin = 0;
+    return maxor(amin, amax, bmin, bmax);
+}
+\end{lstlisting}
+
+\section{signed min \{a\&b\}}
+For $\alpha \in a, \beta \in b$, and $i < N-1$
+\begin{equation} 
+(\alpha \& \beta)_{N-1} = 1 \quad \Rightarrow \quad c_{min, N-1} = 1
+\end{equation}
+\begin{equation}\label{maxand+}
+(\alpha\&\beta)_i = 0 \quad \Rightarrow \quad 
+c_{min,i} = 0
+\end{equation}
+
+By \eqref{10s},
+\begin{equation*} 
+(a_{min} \& b_{min})_{N-1} = 1 \quad \Rightarrow \quad c_{min, N-1} = 1
+\end{equation*}
+
+Then
+\begin{equation*} 
+c_{min,N-1} = (a_{min} \& b_{min})_{N-1} 
+\end{equation*}
+
+As with unsigned, $[\sim a_{max}, \sim a_{min}]$ is a valid range. Also,
+\begin{equation*}
+\sim (\sim a_{min} \text{\textbar} \sim b_{min}) = (a_{min} \& b_{min})
+\end{equation*}
+
+Then we can do the same as for unsigned:
+\begin{lstlisting}
+int32_t minand_s(int32_t amin, int32_t amax, int32_t bmin, int32_t bmax){
+    return ~maxor_s(~amax, ~amin, ~bmax, ~bmin);
+}
+\end{lstlisting}
+
+\section{signed min\{a\text{\textbar}b\}}
+
+Likewise,
+\begin{lstlisting}
+int32_t minor_s(int32_t amin, int32_t amax, int32_t bmin, int32_t bmax){
+    return ~maxand_s(~amax, ~amin, ~bmax, ~bmin);
+}
+\end{lstlisting}
+
+\section{signed $max\{a$\^{}$b\}$}
+
+For $\alpha \in a, \beta \in b$, and $i < N-1$,
+
+\begin{equation} 
+(\alpha \text{\^{}} \beta)_{N-1} = 0 \quad \Rightarrow \quad 
+c_{max, N-1} = 0
+\end{equation}
+\begin{equation}
+(\alpha\text{\^{}}\beta)_i = 1 
+\quad \Rightarrow \quad 
+c_{max,i} = 1
+\end{equation}
+
+Decomposed:
+\begin{equation*}
+a_{min,N-1} = 1 \wedge b_{min,N-1} = 1 \vee 
+a_{max,N-1} = 0 \wedge b_{max,N-1} = 0
+\quad \Rightarrow \quad 
+c_{max,N-1} = 0
+\end{equation*}
+
+Then:
+\begin{equation*}
+c_{max,N-1} = (a_{min,N-1}\text{\^{}}b_{min,N-1})\&(a_{max,N-1}\text{\^{}}b_{max,N-1})
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 00$, then it must be that 
+$\hat a_{N-1} = 0$. Therefore
+
+\begin{equation*}
+a^{N-2} = [\vec 0, a_{max}]
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 11$, then it must be that
+$\hat a_{N-1} = 1$. Therefore
+
+\begin{equation*}
+a^{N-2} = [a_{min},\vec 1]
+\end{equation*}
+
+For $\eqref{10s}\wedge b_{min,N-1},b_{max,N-1} = 10$, then we need either
+both set to $1$ or both set to $0$, but which? Meh, screw it. Try each,
+and take the maximum of the two results.
+
+So:
+\begin{equation*}
+a^{N-2} = [a_{min},\vec 1]
+\end{equation*}
+\begin{equation*}
+b^{N-2} = [b_{min},\vec 1]
+\end{equation*}
+
+or
+\begin{equation*}
+a^{N-2} = [\vec 0,a_{max}]
+\end{equation*}
+\begin{equation*}
+b^{N-2} = [\vec 0,b_{max}]
+\end{equation*}
+
+\begin{lstlisting}
+int32_t maxxor_s(int32_t amin, int32_t amax, int32_t bmin, int32_t bmax){
+    int32_t a0 = amin & ~amax & ~bmin & 0x80000000;
+    int32_t a1 = amin & ~amax &  bmax & 0x80000000;
+    int32_t b0 = bmin & ~bmax & ~amin & 0x80000000;
+    int32_t b1 = bmin & ~bmax &  amax & 0x80000000;
+    int32_t ab = amin & ~amax & bmin & ~bmax & 0x80000000;
+    if( ab ){
+        return max( maxxor(0,amax,0,bmax), maxxor(amin,-1,bmin,-1));
+    }
+    if( a0 ) amin = 0;
+    if( a1 ) amax = -1;
+    if( b0 ) bmin = 0;
+    if( b1 ) bmax = -1;
+    return maxxor(amin,amax,bmin,bmax);
+}
+\end{lstlisting}
+
+\section{signed $min\{a$\^{}$b\}$}
+
+For $\alpha \in a, \beta \in b$, and $i < N-1$,
+
+\begin{equation} 
+(\alpha \text{\^{}} \beta)_{N-1} = 1 \quad \Rightarrow \quad 
+c_{min, N-1} = 1
+\end{equation}
+\begin{equation}
+(\alpha\text{\^{}}\beta)_i = 0 
+\quad \Rightarrow \quad 
+c_{min,i} = 0
+\end{equation}
+
+Then:
+\begin{equation*}
+c_{min,N-1} = (a_{min,N-1}\text{\^{}}b_{max,N-1})\text{\textbar}(a_{max,N-1}\text{\^{}}b_{min,N-1})
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 00$, then it must be that 
+$\hat a_{N-1} = 1$. Therefore
+
+\begin{equation*}
+a^{N-2} = [a_{min},\vec 1]
+\end{equation*}
+
+For $\eqref{10s} \wedge b_{min,N-1},b_{max,N-1} = 11$, then it must be that
+$\hat a_{N-1} = 0$. Therefore
+
+\begin{equation*}
+a^{N-2} = [\vec 0, a_{max}]
+\end{equation*}
+
+For $\eqref{10s}\wedge b_{min,N-1},b_{max,N-1} = 10$, then both are 
+unconstrained. Then we want $\hat a_{N-1} = 0$ and $\hat b_{N-1} = 1$,
+or vice versa - but which? Meh, screw it, try each and take the minimum of 
+the two results.
+
+So:
+\begin{equation*}
+a^{N-2} = [\vec 0, a_{max}]
+\end{equation*}
+\begin{equation*}
+b^{N-2} = [b_{min},\vec 1]
+\end{equation*}
+
+or
+\begin{equation*}
+a^{N-2} = [a_{min},\vec 1]
+\end{equation*}
+\begin{equation*}
+b^{N-2} = [\vec 0, b_{max}]
+\end{equation*}
+
+\begin{lstlisting}
+int32_t minxor_s(int32_t amin, int32_t amax, int32_t bmin, int32_t bmax){
+    int32_t a0 = amin & ~amax &  bmax & 0x80000000;
+    int32_t a1 = amin & ~amax & ~bmin & 0x80000000;
+    int32_t b0 = bmin & ~bmax &  amax & 0x80000000;
+    int32_t b1 = bmin & ~bmax & ~amin & 0x80000000;
+    int32_t ab = amin & ~amax & bmin & ~bmax & 0x80000000;
+    if( ab ) {
+        return min( minxor(0, amax, bmin, -1), minxor(amin, -1, 0, bmax));
+    }
+    if( a0 ) amin = 0;
+    if( a1 ) amax = -1;
+    if( b0 ) bmin = 0;
+    if( b1 ) bmax = -1;
+    return minxor(amin,amax,bmin,bmax);
+}
+\end{lstlisting}
+\end{document}
