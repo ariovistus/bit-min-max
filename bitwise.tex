@@ -66,12 +66,17 @@ unsigned(a) = \sum_{i\in I_N} {a_i} \cdot 2^i
 signed(a) = - a_{N-1} \cdot 2^{N-1} + \sum_{i = 0}^{N-2} {a_i} \cdot 2^i
 \end{equation}
 
-It should be apparent that $B_N$ is isomorphic to $\mathbb{Z}_N$. 
-Hence, we may use the modular operators +,-,*, on elements of $B_N$, with 
-the result in the range of signed or unsigned, depending on context.
-Aaaaa! C standard specifies that result of arithmetic operations on 
-signed integers
-which causes overflow is undefined!!!!!
+These are the semantics for unsigned and two's complement signed fixed width 
+integer arithmetic, which are the built-in integer types of C and its 
+derivatives, in particular D (which is a bit more well-defined than C).
+
+\vspace{10pt}
+It should be apparent that $signed$ and $unsigned$ are isomorphisms from 
+$B_N$ to $\mathbb{Z}_N$.  Therefore, we may use the modular operators +,-,*, 
+on $B_N$, and mean we are using them on the the image of $B_N$ over
+$signed$ or $unsigned$.  Note C standard specifies that result of 
+arithmetic operations on signed integers which causes overflow is undefined. 
+This isn't true in D.
 
 Also, we define $a>b$ as 
 
@@ -82,8 +87,9 @@ for $t$ $signed$ or $unsigned$, depending on context.
 
 The operators of interest to us are functions of the form 
 $f : B_N \times B_N \rightarrow B_N$. 
-They may be computed in $O(N)$ time. In particular, on modern 
-computers, they may be executed very efficiently for select values of $N$.
+They may be computed in $O(N)$ time. In particular, they may be executed 
+very efficiently for select values of $N$ (i.e. the ones which constitute 
+D built in types).
 We will refer to them by the symbols used in C. They are the 
 following:
 \begin{itemize}
@@ -129,21 +135,21 @@ $ ($\textgreater\textgreater$) : B_N \times I_N  \rightarrow B_N$, where
     0 & \quad \text{otherwise}
     \end{array}\right.
 \end{equation*}
-\item bsr
+\item hbmask
 
-This is not a C primitive
-(though it is a primitive in Intel assembly code), 
-but it is used extensively in this paper.
-It takes the name of an Intel instruction. Its semantics are as 
-follows:
+This is not a C primitive, but it can be implemented efficiently enough.
+Its semantics are as follows:
 
-$bsr : B_N \setminus \{\vec 0\} \rightarrow I_N$
+$hbmask : B_N \rightarrow I_N$
+\begin{equation*} 
+hbmask(a)_i = \left\{
+    \begin{array}{l l}
+    1 & \quad (\exists j > i)(a_j = 1)\\
+    0 & \quad \text{otherwise}
+    \end{array}\right.
+\end{equation*}
 
-$bsr(a) = max \,\{ i \in I_N : a_i = 1\} $
-
-Otherwise, $bsr$ can be implemented in user code.
 \end{itemize}
-Todo: check C standard for gotchas
 \vspace{10pt}
 
 Define functions
@@ -173,24 +179,19 @@ $dn(a,i) = \alpha$, where
     \end{array}\right.
 \end{equation*}
 
-Note that with unsigned interpretation, and 
-for $x = up(a,i)$, where $a_i = 0$, and $y \in B_N$ the following hold:
-\begin{equation*}
-a \le x
-\end{equation*}
-\begin{equation*}
-a \le y \wedge y_i = 1 \quad \Rightarrow \quad x \le y
-\end{equation*}
+Note that with unsigned interpretation, $a \in B_N$, $i \in I_N$,
+and $a_i = 0$, then $up(a,i)$ is the smallest value in $B_N$ greater
+than $a$.
 
-For $x = dn(a,i)$, where $a_i = 1$, and $y \in B_N$ the following hold:
-\begin{equation*}
-a \ge x
-\end{equation*}
-\begin{equation*}
-a \ge y \wedge y_i = 0 \quad \Rightarrow \quad x \ge y
-\end{equation*}
+Similarly, when $a_i = 1$, then $dn(a,i)$ is the largest value in 
+$B_N$ smaller than $a$.
 
-Let $s(a,i)$ be the bits $a_{0}$ through $a_{i}$ inclusive.
+\vspace{10pt}
+
+Let $s(a,i,j)$ be the bits $a_{i}$ through $a_{j}$ inclusive.
+Let $s(a,i)$ be $s(a,0,i)$
+
+\vspace{10pt}
 
 Given integer intervals 
 \begin{equation*}
@@ -199,29 +200,30 @@ a = [a_{min},a_{max}] \subseteq B_N
 \begin{equation*}
 b = [b_{min},b_{max}] \subseteq B_N
 \end{equation*} 
+and $\check a, \hat a \in a$, and likewise for $b$, 
 let
-\begin{equation*}
-c = [c_{min},c_{max}] \subseteq B_N
-\end{equation*} 
-where
-\begin{equation*}c_{min} = min \; \{A \; op \; B :A \in a, B \in b\},\end{equation*} 
-\begin{equation*}c_{max} = max \; \{A \; op \; B :A \in a, B \in b\}, \end{equation*}
+\begin{equation*}c_{min} = \check a \; op \; \check b = min \; \{A \; op \; B :A \in a, B \in b\},\end{equation*} 
+\begin{equation*}c_{max} = \hat a \; op \; \hat b = max \; \{A \; op \; B :A \in a, B \in b\}, \end{equation*}
 for bitwise operator $op$, and $signed$ or $unsigned$ interpretation.
 
-Also, let $\check a, \hat a \in a$, and likewise for $b$, where
-\begin{equation*}
-c_{max} = \hat a \; op \; \hat b
-\end{equation*}
-\begin{equation*}
-c_{min} = \check a \; op \; \check b
-\end{equation*}
+\section{The Principle}
 
+For $c_{max}$ or $c_{min}$, bit $i$ must be maximized or 
+minimized before bits $j<i$ can be because bit $i$ contributes a greater 
+magnitude than the sum of all $j<i$ bits. Therefore, we can find $c_{max}$ 
+or $c_{min}$ if we maximize or minimize each bit, constraining subsequent 
+bits as necessary, from bit $N-1$ to bit $0$.
 
-\section{unsigned $max \{a\&b\}$}\label{maxand}
+\section{unsigned $max \{a\;\&\;b\}$}\label{maxand}
 Consider $i \in I_N$ and ranges $a^i$ and $b^i$, where
 
+\begin{equation}\label{prerq1} \hat a \in a^i \end{equation}
+\begin{equation}\label{prerq2} 
+s(a^i_{min},i+1,N-1) = s(a^i_{max},i+1,N-1)
+\end{equation}
 \begin{equation}\label{le1} s(a^i_{min},i) \le s(a^i_{max},i)\end{equation}
-and likewise for $b$. Then by \eqref{unsdef} exactly one of the following must be true:
+
+and likewise for $b$. Then by \eqref{unsdef} and \eqref{le1} exactly one of the following must be true:
 \begin{equation}\label{00} 
 a^i_{min,i},a^i_{max,i} = 0,0
 \end{equation}
@@ -238,7 +240,7 @@ a^i_{max, i} = 1 \quad \Rightarrow \quad \alpha_i = 1 \quad
 \end{equation}
 and likewise for $b$.
 
-It follows from \eqref{unsdef} that for $\alpha \in a^i$, 
+Then it follows that for $\alpha \in a^i$, 
 $\beta \in b^i$:
 \begin{equation}
 (\alpha \; \text{\&} \; \beta)_i = 1
@@ -248,11 +250,9 @@ then from \eqref{up1}, it follows that
 \begin{equation}
 c_{max,i} = a^i_{max,i} \; \text{\&}\; b^i_{max,i}
 \end{equation}
-
-Now, for $i \ge 1$, in the cases \eqref{00} and \eqref{11}, 
-it follows that \eqref{le1} 
-will hold for $a^{i-1}=a^i$ and $b^{i-1} = b^i$, but possibly
-not for case \eqref{01}. Note that:
+For $i \ge 1$, in the cases \eqref{00} and \eqref{11}: \eqref{prerq1}, 
+\eqref{prerq2}, and \eqref{le1} will hold for $a^{i-1}=a^i$ and 
+$b^{i-1} = b^i$. Otherwise:
 
 \begin{equation*}
 \eqref{01} \quad \Rightarrow 
@@ -285,18 +285,22 @@ Likewise for $b$.
 \vspace{10pt}
 
 So, given ranges $a$ and $b$ for which to find $c_{max}$ for $a\&b$,
-\eqref{le1} is true for $\bar a^{N-1}=a$, $\bar b^{N-1}=b$, and by
-\eqref{010maxand} and \eqref{011maxand}, \eqref{le1} is true for 
+\eqref{prerq1}, \eqref{prerq2}, and \eqref{le1} are true for 
+$a^{N-1}=a$, $b^{N-1}=b$, and by
+\eqref{010maxand} and \eqref{011maxand}, \eqref{prerq1}, \eqref{prerq2}, 
+and \eqref{le1} are true for 
 subsequent $\bar a_i$, $\bar b_i$. Then using this procedure 
 we can compute the complete value of $c_{max}$. Prove it. No.
 \vspace{10pt}
 
 An intrepid observer will note that only the first applications of
-\eqref{011maxand} and \eqref{010maxand} affect subsequent calculations, and only
-applications of \eqref{010maxand} will affect the value of $c_{max}$. 
-However, to find the first application of each without computing all of $a^i$
-and $b^i$, one must consider the dependencies they
-may have on each other. Call a dependency chain a sequence of applications of 
+\eqref{011maxand} and \eqref{010maxand} will change a subsequent bit, and only
+applications of \eqref{010maxand} will affect the value of $c_{max}$ (ie will 
+change a bit of $a_{max}$). Therefore, we may eliminate the intermediates 
+$a^i$ and $b^i$ if we can determine where each first application occurs. 
+
+\vspace{10pt}
+Call a dependency chain a sequence of applications of 
 \eqref{011maxand} and \eqref{010maxand} on $a$ or $b$
 \begin{equation*}
 d_1 \rightarrow d_2 \rightarrow ... \; d_n
@@ -338,21 +342,33 @@ for the first application of $\eqref{010maxand}_a$ is:
 
 and likewise for $b$. 
 
+\vspace{10pt}
+
 Let us introduce the syntax $aabb_i$ to mean 
 $a_{min,i},a_{max,i},b_{min,i},b_{max,i}$.
+
+\vspace{10pt}
 
 Then the algorithm to find $max \{a\&b\}$ can be expressed as follows:
 \vspace{10pt}
 
 Given ranges $a,b$, define $i_a$ as the highest bit where 
-$\eqref{010maxand}_a$ occurs, and likewise for $b$. Then
+$\eqref{010maxand}_a$ occurs (or -1 if it does not occur), 
+and likewise for $b$. Then
 
 \begin{equation*}
+c_{max} = \left\{
+\begin{array}{l l}
+dn(a_{max},i_a) \;\&\; b_{max} & \quad i_a > i_b \\
+a_{max} \;\&\; dn(b_{max},i_b) & \quad i_b > -1 \\ 
+a_{max} \;\&\; b_{max}         & \quad otherwise
+\end{array}\right.
+\end{equation*}
+where
+\begin{equation}\label{ia-maxand}
 i_a = max \, ( \, \{i_0\} \cup \{i \in I_{i_1}\; : \; 
             aabb_i = *1*0\} \, ) 
-\end{equation*}
-
-where
+\end{equation}
 \begin{equation*}
 i_0 = max \, \{i \in I_N\; : \; 
 aabb_i = 01*0\},\,
@@ -365,121 +381,34 @@ aabb_i = 01*1\},\,
 \end{equation*}
 \vspace{0pt}
 
-if $i_a > i_b$, then
-
-\quad $c_{max} = dn\,(a_{max},i_a) \; \text{\&} \; b_{max} $
-
-otherwise if $i_b > -1$,
-
-\quad $c_{max} = a_{max} \; \text{\&} \; dn\,(b_{max},i_b) $
-
-otherwise,
-
-\quad $c_{max} = a_{max} \; \text{\&} \; b_{max} $
-\vspace{10pt}
-
 This algorithm is correct because I said so. Sure would like to have 
 better justification than that.
 \vspace{10pt}
 
-Given a suitable N, (we will assume $N=32$),
-$dn(a_{max},i_a)$ can be efficiently computed with the C 
-primitives listed above
-
-Then in C, given ranges $a$ and $b$:
+Given a suitable N, (we will assume $N=32$, as this corresponds to the $uint$ 
+type in D), $c_{max}$ can be efficiently computed in D code:
 \begin{lstlisting}
-#include<stdint.h>
-uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmax){
-\end{lstlisting}
-We can compute $i_a$ as follows:
-
-\begin{lstlisting}
-    uint32_t xi0 = ~amin & amax & ~bmax;
-\end{lstlisting}
-to find the bits unmodified by \eqref{011maxand} which trigger \eqref{010maxand}. 
-When $xi0 \ne 0$, $i_0 = bsr(xi0)$. Otherwise, $i_0 = -1$.
-\begin{lstlisting}
-    uint32_t xi1 = ~amin & amax & bmax;
-\end{lstlisting}
-to find the bits which trigger \eqref{011maxand}. 
-Assuming $xi1 \ne 0$, $i_1 = bsr(xi1)$.
-\begin{lstlisting}
-    uint32_t xi01 = 0;
-    if (xi1 != 0) xi01 = ((1 << bsr(xi1))-1) & amax & ~bmax;
-\end{lstlisting}
-to find the bits modified by \eqref{011maxand} which trigger \eqref{010maxand}.
-Note that
-\begin{lstlisting}
-    ((1 << i)-1) 
-\end{lstlisting}
-will result in a bit sequence with all bits below bit $i$ set to $1$, and 
-all other bits set to $0$. In particular, $i=0$ will result in $0$. 
-
-Assuming $xi01 \ne 0$, $i_a = max(i_0, bsr(xi01))$. Without using $max$,
-this can be computed as follows:
-\begin{lstlisting}
-    uint32_t xa = xi0 | xi01;
-    uint32_t ia = -1;
-    if (xa != 0) ia = bsr(xa);
-    return ia;
-}
-\end{lstlisting}
-
-Then, to compute $dn(a_{max}, i_a)$:
-\begin{lstlisting}
-uint32_t dn(uint32_t amin, uint32_t amax, uint32_t bmax){
-    uint32_t mask = 0;
-    uint32_t ia = i_a(amin,amax,bmax);
-    if (ia != -1) mask = (1 << ia)-1;
-    return amax|mask;
-}
-\end{lstlisting}
-
-Note that setting $a_{max,i} = 0$ has no effect on $c_{max}$, so it is not
-performed.
-Also, since $a\text{\textbar}0 = a$, the case $ia = -1$ has the same effect
-as $ia = 0$. Thus, if
-\begin{equation}\label{oho}
-min(ia) = 0
-\end{equation} 
-we obviate the
-need for the conditional.
-We can also use this principle to remove conditionals which guard 
-$bsr$ by setting its argument's minimum value to $1$. 
-$arg \text{\textbar} 1$ can accomplish this.
-With these optimizations, our code is now:
-\begin{lstlisting}
-#include<stdint.h>
-uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmax){
-    uint32_t xi0 = ~amin & amax & ~bmax;
-    uint32_t xi1 = ~amin & amax & bmax;
-    uint32_t xi01 = ((1 << bsr(xi1|1))-1) & amax & ~bmax;
-    uint32_t xa = xi0 | xi01;
-    uint32_t ia = bsr(xa|1);
-    return ia;
-}
-
-uint32_t dn(uint32_t amin, uint32_t amax, uint32_t bmax){
-    uint32_t mask = (1 << i_a(amin,amax,bmax))-1;
-    return amax|mask;
-}
-\end{lstlisting}
-
-Altogether, the algorithm expressed in C is as follows:
-\begin{lstlisting}
-#include <stdint.h>
-uint32_t maxand(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
-    uint32_t xa1 = ~amin& amax      & bmax;
-    uint32_t xa0 = ~amin& amax      &~bmax;
-    uint32_t xb1 =        amax&~bmin& bmax;
-    uint32_t xb0 =       ~amax&~bmin& bmax;
-    xa0 |= ((1 << bsr(xa1|1))-1)&amax&~bmax;
-    xb0 |= ((1 << bsr(xb1|1))-1)&bmax&~amax;
-    if(xa0 > xb0) amax |= (1 << bsr(xa0|1))-1;
-    else  bmax |= (1 << bsr(xb0|1))-1;
+uint maxand(uint amin, uint amax, uint bmin, uint bmax){
+    uint xa1 = ~amin& amax      & bmax;
+    uint xa0 = ~amin& amax      &~bmax;
+    uint xb1 =        amax&~bmin& bmax;
+    uint xb0 =       ~amax&~bmin& bmax;
+    xa0 |= hbmask(xa1)&amax&~bmax;
+    xb0 |= hbmask(xb1)&bmax&~amax;
+    if(xa0 > xb0) amax |= hbmask(xa0);
+    else  bmax |= hbmask(xb0);
     return amax&bmax;
 }
 \end{lstlisting}
+
+Note first the partial computation of $i_0$ and $i_1$ in lines 2 through 5. 
+These will be the indeces of the highest set bits of xa0 and xa1 respectively 
+(and likewise for b). The result of lines 6 and 7 is that $i_a$ is the index 
+of the highest set bit of xa0 (and likewise for b). Line 8 replaces amax with
+$dn(a_{max},i_a)$ if appropriate (actually, this isn't strictly true, as it 
+doesn't set $a_{max, i_a} = 0$, but this is unnecessary, as $b_{max,i_a} = 0$
+must be true, therefore $c_{max,i_a} = 0$ will occur regardless). 
+Likewise for b on line 9. Finally, $c_{max}$ is computed and returned.
 
 \section{unsigned $max\{a\text{\textbar} b\}$}
 Again, the same basic construction as \ref{maxand} may be used. 
@@ -488,7 +417,7 @@ The interesting differences are:
 It follows from \eqref{unsdef} that for $\alpha \in a^i$, $\beta \in b^i$:
 \begin{equation}
 (\alpha \; \text{\textbar} \; \beta)_i = 1
-\quad \Rightarrow \quad c_{min,i} = 1
+\quad \Rightarrow \quad c_{max,i} = 1
 \end{equation}
 
 then from \eqref{up1}, it follows that 
@@ -559,15 +488,23 @@ into account, and likewise for $b$.
 Therefore, the algorithm for max\{a\text{\textbar}b\} is:
 \vspace{10pt}
 
-Given ranges $a$ and $b$, define $i_a$ as the first bit where $\eqref{010maxor}_a$ occurs.
+Define $i_a$ as the first bit where $\eqref{010maxor}_a$ occurs (or -1 if
+$\eqref{010maxor}_a$ does not occur). Then:
 
+\begin{equation*}
+c_{max} = \left\{
+\begin{array}{l l}
+dn(a_{max},i_a) \;\text{\textbar}\; b_{max} & \quad i_a > i_b \\
+a_{max} \;\text{\textbar}\; dn(b_{max},i_b) & \quad i_b > -1 \\ 
+a_{max} \;\text{\textbar}\; b_{max}         & \quad otherwise
+\end{array}\right.
+\end{equation*}
+    where
 \begin{equation*}
 i_a = 
 max \, ( \, \{i_1\} \cup 
 \{ i \in I_{i_0} \; : \; aabb_i = *1*1\} )
 \end{equation*}
-
-    where
 \begin{equation*}
 i_0 = max \, \{i \in I_N\; : \; 
 aabb_i = 01*0\},\,
@@ -580,60 +517,17 @@ aabb_i = 01*1\},\,
 \end{equation*}
 \vspace{0pt}
 
-if $i_a > i_b$, then
-
-\quad $c_{max} = dn\,(a_{max},i_a) \; \text{\textbar} \; b_{max} $
-
-otherwise if $i_b > -1$,
-
-\quad $c_{max} = a_{min} \; \text{\textbar} \; dn\,(b_{max},i_b) $
-
-otherwise,
-
-\quad $c_{max} = a_{max} \; \text{\textbar} \; b_{max} $
-\vspace{10pt}
-
-Then in C, given ranges $a$ and $b$,
-We can compute $i_a$ as follows:
+Then in D, the code is as follows:
 \begin{lstlisting}
-#include<stdint.h>
-uint32_t i_a(uint32_t amin, uint32_t amax, uint32_t bmax){
-    uint32_t xi0 = ~amin & amax & ~bmax;
-\end{lstlisting}
-to find the bits where \eqref{011maxor} occurs.
-Assuming $xi0 \ne 0$, $i_0 = bsr(xi0)$.
-\begin{lstlisting}
-    uint32_t xi1 = ~amin & amax & bmax;
-\end{lstlisting}
-to find the bits not triggered by \eqref{011maxor} where \eqref{010maxor} 
-occurs. 
-Assuming $xi1 \ne 0$, $i_1 = bsr(xi1)$.
-\begin{lstlisting}
-    uint32_t xi01 = ((1 << bsr(xi0|1))-1) & amax & bmax;
-\end{lstlisting}
-to find the bits modified by \eqref{011maxor} which trigger \eqref{010maxor}.
-
-Assuming $xi01 \ne 0$, $i_a = max(i_0, bsr(xi01))$. Without using $max$,
-this can be computed as follows:
-\begin{lstlisting}
-    uint32_t xa = xi1 | xi01;
-    uint32_t ia = bsr(xa|1);
-    return ia;
-}
-\end{lstlisting}
-
-Altogether, the algorithm expressed in C is as follows:
-\begin{lstlisting}
-#include <stdint.h>
-uint32_t maxor(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
-    uint32_t xa1 = ~amin&amax&bmax;
-    uint32_t xa0 = ~amin&amax&~bmax;
-    uint32_t xb1 = ~bmin&bmax&amax;
-    uint32_t xb0 = ~bmin&bmax&~amax;
-    xa1 |= ((1 << bsr(xa0|1))-1)&amax&bmax;
-    xb1 |= ((1 << bsr(xb0|1))-1)&amax&bmax;
-    if(xa1 > xb1) amax |= (1 << bsr(xa1|1))-1;
-    else if(xb1 > 0) bmax |= (1 << bsr(xb1|1))-1;
+uint maxor(uint amin, uint amax, uint bmin, uint bmax){
+    uint xa1 = ~amin&amax&bmax;
+    uint xa0 = ~amin&amax&~bmax;
+    uint xb1 = ~bmin&bmax&amax;
+    uint xb0 = ~bmin&bmax&~amax;
+    xa1 |= hbmask(xa0)&amax&bmax;
+    xb1 |= hbmask(xb0)&amax&bmax;
+    if(xa1 > xb1) amax |= hbmask(xa1);
+    else if(xb1 > 0) bmax |= hbmask(xb1);
     return amax|bmax;
 }
 \end{lstlisting}
@@ -652,12 +546,11 @@ Can be rearranged to
 
 Thus we can reduce the code a bit to
 \begin{lstlisting}
-#include <stdint.h>
-uint32_t maxor(uint32_t amin, uint32_t amax, uint32_t bmin, uint32_t bmax){
-    uint32_t x1 = (~amin&amax& bmax)|(~bmin&bmax& amax);
-    uint32_t x0 = (~amin&amax&~bmax)|(~bmin&bmax&~amax);
-    x1 |= ((1 << bsr(x0|1))-1)&amax&bmax;
-    return amax|bmax|((1 << bsr(x1|1))-1);
+uint maxor(uint amin, uint amax, uint bmin, uint bmax){
+    uint x1 = (~amin&amax& bmax)|(~bmin&bmax& amax);
+    uint x0 = (~amin&amax&~bmax)|(~bmin&bmax&~amax);
+    x1 |= hbmask(x0)&amax&bmax;
+    return amax|bmax|hbmask(x1);
 }
 \end{lstlisting}
 
