@@ -532,19 +532,8 @@ uint maxor(uint amin, uint amax, uint bmin, uint bmax){
 }
 \end{lstlisting}
 
-Note that 
+Note that we can take advantage of \textbar's associativity and commutativity to reduce the code a bit:
 
-\begin{lstlisting}
-    cmax = (amax|amask)|(bmax|bmask);
-\end{lstlisting}
-
-Can be rearranged to
-
-\begin{lstlisting}
-    cmax = (amax|bmax)|(amask|bmask);
-\end{lstlisting}
-
-Thus we can reduce the code a bit to
 \begin{lstlisting}
 uint maxor(uint amin, uint amax, uint bmin, uint bmax){
     uint x1 = (~amin&amax& bmax)|(~bmin&bmax& amax);
@@ -573,7 +562,7 @@ c_{min,i} = a^i_{min,i} \; \text{\&}\; b^i_{min,i}
 
 then
 \begin{equation*}
-\eqref{01} \rightarrow c_{min,i} = 0
+\eqref{01} \Rightarrow c_{min,i} = 0
 \end{equation*}
 
 By \eqref{minand},
