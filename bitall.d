@@ -41,7 +41,7 @@ module bitall;
  +/
 
 import std.algorithm, std.conv, std.stdio, std.traits;
-static import std.intrinsic;
+static import core.bitop;
 
 template signed(T){
     static if(isSigned!T) alias T signed;
@@ -70,14 +70,14 @@ private template bsr(T) if(isIntegral!T){
         T bsr(T x){
             uint* xsp = cast(uint*) &x;
             uint xl = xsp[0], xh = xsp[1];
-            if(xh) return std.intrinsic.bsr(xh) + 32;
-            else return std.intrinsic.bsr(xl);
+            if(xh) return core.bitop.bsr(xh) + 32;
+            else return core.bitop.bsr(xl);
         }
     }else static if(uint.sizeof == T.sizeof){
-        alias std.intrinsic.bsr bsr;
+        alias core.bitop.bsr bsr;
     }else{
         T bsr(T x){
-            return cast(T) std.intrinsic.bsr(x & (cast(unsigned!T) -1));
+            return cast(T) core.bitop.bsr(x & (cast(unsigned!T) -1));
         }
     }
 }
@@ -123,12 +123,12 @@ unittest{
             ==          0x7f_ff_ff_ff_ff_ff_ff_ffUL);
 }
 
-template _dumb(I, string m, string op){
+template dumb(I, string m, string op){
     static assert(m == "max" || m == "min");
     static assert(op == "&" || op == "|" || op == "^");
     enum cmp = ((m == "max") ? ">" : "<");
 
-    I _dumb(I amin, I amax, I bmin, I bmax){
+    I dumb(I amin, I amax, I bmin, I bmax){
         assert(amin <= amax);
         assert(bmin <= bmax);
         static if(m == "max"){
@@ -146,10 +146,6 @@ template _dumb(I, string m, string op){
         }
         return x;
     }
-}
-
-template dumb(I, string m, string op){
-    alias _dumb!(I,m,op)._dumb dumb;
 }
 
 unittest{
