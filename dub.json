@@ -1,0 +1,7 @@
+{
+	"name": "bit-min-max",
+	"description": "Find min and max of bitwise AND, OR, and XOR",
+	"copyright": "Copyright © 2014, Ellery Newcomer",
+	"authors": ["Ellery Newcomer"],
+        "license": "BSL-1.0",
+}

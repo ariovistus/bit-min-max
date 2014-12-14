@@ -1,32 +1,7 @@
-/++
- + author:         Ellery Newcomer
- + license:        BSD 
- + copyright:      Copyright (c) 2011 Ellery Newcomer All rights reserved.
- +/
-
-/+ bsd license
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-1. Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-2. Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.
-3. The name of the author may not be used to endorse or promote products
-derived from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
-IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
-INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- +/
+//          Copyright Ellery Newcomer 2011 - 2014.
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
 module bitall;
 /++ 
  + This module contains algorithms for finding the minimum and maximum of
@@ -43,7 +18,7 @@ module bitall;
 import std.algorithm, std.conv, std.stdio, std.traits;
 static import core.bitop;
 
-template signed(T){
+template signed(T) {
     static if(isSigned!T) alias T signed;
     else static if(is(T == ubyte)) alias byte signed;
     else static if(is(T == ushort)) alias short signed;
@@ -53,7 +28,7 @@ template signed(T){
 static assert(is( signed!(ubyte) == byte));
 static assert(is( signed!(byte) == byte));
 
-template unsigned(T){
+template unsigned(T) {
     static if(isUnsigned!T) alias T unsigned;
     else static if(is(T == byte)) alias ubyte unsigned;
     else static if(is(T == short)) alias ushort unsigned;
@@ -64,19 +39,19 @@ template unsigned(T){
 static assert(is( unsigned!(ubyte) == ubyte));
 static assert(is( unsigned!(byte) == ubyte));
 
-private template bsr(T) if(isIntegral!T){
-    static if(uint.sizeof < T.sizeof){
+private template bsr(T) if(isIntegral!T) {
+    static if(uint.sizeof < T.sizeof) {
         static assert(T.sizeof == ulong.sizeof);
-        T bsr(T x){
+        T bsr(T x) {
             uint* xsp = cast(uint*) &x;
             uint xl = xsp[0], xh = xsp[1];
             if(xh) return core.bitop.bsr(xh) + 32;
             else return core.bitop.bsr(xl);
         }
-    }else static if(uint.sizeof == T.sizeof){
+    }else static if(uint.sizeof == T.sizeof) {
         alias core.bitop.bsr bsr;
     }else{
-        T bsr(T x){
+        T bsr(T x) {
             return cast(T) core.bitop.bsr(x & (cast(unsigned!T) -1));
         }
     }
@@ -105,7 +80,7 @@ unittest{
     assert(bsr!long(0x80_00_00_00_00_00_00_00UL) == 63);
 }
 
-I hbmask(I)(I i) if(isIntegral!I){
+I hbmask(I)(I i) if(isIntegral!I) {
     return cast(I) ((cast(I)1 << bsr!I(i|1))-1);
 }
 
@@ -123,21 +98,21 @@ unittest{
             ==          0x7f_ff_ff_ff_ff_ff_ff_ffUL);
 }
 
-template dumb(I, string m, string op){
+template dumb(I, string m, string op) {
     static assert(m == "max" || m == "min");
     static assert(op == "&" || op == "|" || op == "^");
     enum cmp = ((m == "max") ? ">" : "<");
 
-    I dumb(I amin, I amax, I bmin, I bmax){
+    I dumb(I amin, I amax, I bmin, I bmax) {
         assert(amin <= amax);
         assert(bmin <= bmax);
-        static if(m == "max"){
+        static if(m == "max") {
             I x = I.min;
         }else{
             I x = I.max;
         }
-        for(I a = amin;; a++){
-            for(I b = bmin;; b++){
+        for(I a = amin;; a++) {
+            for(I b = bmin;; b++) {
                 I n = mixin("cast(I)(a"~op~"b)");
                 if(mixin("n"~cmp~"x")) x = n;
                 if(b == bmax) break;
@@ -156,7 +131,7 @@ unittest{
 enum vst0 = q{
     I r1 = mf(amin, amax, bmin, bmax);
     I r2 = dumb!(I,m,op)(amin, amax, bmin, bmax);
-    if (r1 != r2){
+    if (r1 != r2) {
         writefln("Failed at a min=%s max=%s b min=%s max=%s",
                 amin, amax, bmin, bmax);
         writefln("\t a min: %8b max:%8b", amin, amax);
@@ -178,19 +153,19 @@ enum vst2 = q{
     I r1 = mf(amin, amax, bmin, bmax);
 };
 template iter(I, string m, string op, string visitmethod = vst0) 
-    if(isIntegral!I){
+    if(isIntegral!I) {
     static assert(m == "max" || m == "min");
     static assert(op == "|" || op == "&" || op == "^");
-    static if(m == "max"){
-        static if(op == "&") alias maxand mf;
-        else static if(op == "|") alias maxor mf;
-        else static if(op == "^") alias maxxor mf;
-    }else static if (m == "min"){
-        static if(op == "&") alias minand mf;
-        else static if(op == "|") alias minor mf;
-        else static if(op == "^") alias minxor mf;
+    static if(m == "max") {
+        static if(op == "&") alias maxAnd mf;
+        else static if(op == "|") alias maxOr mf;
+        else static if(op == "^") alias maxXor mf;
+    }else static if (m == "min") {
+        static if(op == "&") alias minAnd mf;
+        else static if(op == "|") alias minOr mf;
+        else static if(op == "^") alias minXor mf;
     }
-    static if(isSigned!I){
+    static if(isSigned!I) {
         I maxmin0 = -32;
         I maxmax0 =  32;
         I minmin0 = -32;
@@ -199,22 +174,22 @@ template iter(I, string m, string op, string visitmethod = vst0)
         I maxmax0 =  64;
         I minmin0 =   0;
     }
-    void outer(I maxmin = maxmin0, I maxmax = maxmax0, I minmin = minmin0)(){
+    void outer(I maxmin = maxmin0, I maxmax = maxmax0, I minmin = minmin0)() {
         inner!(maxmin,maxmax,minmin)([0,0,0,0],0);
     }
     /// mm = [maxa,maxb,mina,minb]
-    void inner(I maxmin,I maxmax,I minmin)(I[] mm, size_t i){
-        if(i == 4){
+    void inner(I maxmin,I maxmax,I minmin)(I[] mm, size_t i) {
+        if(i == 4) {
             I amin =mm[2], amax = mm[0], bmin = mm[3], bmax = mm[1];
             mixin(visitmethod);
-        }else if(i < 2){
+        }else if(i < 2) {
             // max
-            for(mm[i] = maxmin; mm[i] <= maxmax; mm[i]++){
+            for(mm[i] = maxmin; mm[i] <= maxmax; mm[i]++) {
                 inner!(maxmin,maxmax,minmin)(mm, i+1);
             }
         }else{
             // min
-            for(mm[i] = minmin; mm[i] <= mm[i-2]; mm[i]++){
+            for(mm[i] = minmin; mm[i] <= mm[i-2]; mm[i]++) {
                 inner!(maxmin,maxmax,minmin)(mm,i+1);
             }
         }
@@ -222,12 +197,12 @@ template iter(I, string m, string op, string visitmethod = vst0)
 
 }
 
-I maxand(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
+I maxAnd(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
 in{
     assert(amin <= amax);
     assert(bmin <= bmax);
 }body{
-    static if(isSigned!I){
+    static if(isSigned!I) {
         // ensure I.min is what we think it is
         static assert(I.min == cast(I)((cast(I)1) << (8*I.sizeof-1)));
         // ie. highbit = 1, others = 0
@@ -242,7 +217,7 @@ in{
         if( a0 || (ab && amax >=bmax)) amin = cast(I) 0;
         if( b1 || (ab && amax >=bmax)) bmax = cast(I) -1;
         if( b0 || (ab && amax < bmax)) bmin = cast(I) 0;
-        return cast(I) maxand!(unsigned!I)(amin, amax, bmin, bmax);
+        return cast(I) maxAnd!(unsigned!I)(amin, amax, bmin, bmax);
     }else{
         I xa1 = ~amin& amax      & bmax;
         I xa0 = ~amin& amax      &~bmax;
@@ -257,9 +232,9 @@ in{
 }
 
 unittest{
-    assert(maxand!int(-1,0,-1,0) == 0);
-    assert(maxand!int(-1,0,-1,1) == 1);
-    assert(maxand!byte(0,8,5,6) == 6);
+    assert(maxAnd!int(-1,0,-1,0) == 0);
+    assert(maxAnd!int(-1,0,-1,1) == 1);
+    assert(maxAnd!byte(0,8,5,6) == 6);
     iter!(byte, "max", "&", chkassert).outer!(-16,16,-16);
     iter!(ubyte, "max", "&", chkassert).outer!(0x7f,0x8f,0x7f);
     iter!(int, "max", "&", chkassert).outer!(-16,16,-16);
@@ -268,12 +243,12 @@ unittest{
     iter!(ulong, "max", "&", chkassert).outer!(0x7fffffffffffffff,0x800000000000000f,0x7fffffffffffffff);
 }
 
-I maxor(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
+I maxOr(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
 in{
     assert(amin <= amax);
     assert(bmin <= bmax);
 }body{
-    static if(isSigned!I){
+    static if(isSigned!I) {
         // ensure I.min is what we think it is
         static assert(I.min == cast(I)((cast(I)1) << (8*I.sizeof-1)));
         // ie. highbit = 1, others = 0
@@ -287,7 +262,7 @@ in{
         if( a0 ) amin = 0;
         if( b1 ) bmax = -1;
         if( b0 ) bmin = 0;
-        return cast(I) maxor!(unsigned!I)(amin, amax, bmin, bmax);
+        return cast(I) maxOr!(unsigned!I)(amin, amax, bmin, bmax);
     }else{
         I x1 = (~amin&amax& bmax)|(~bmin&bmax& amax);
         I x0 = (~amin&amax&~bmax)|(~bmin&bmax&~amax);
@@ -297,7 +272,7 @@ in{
 }
 
 unittest{
-    assert(maxor!byte(0,8,5,6) == 14);
+    assert(maxOr!byte(0,8,5,6) == 14);
     iter!(byte, "max", "|", chkassert).outer!(-16,16,-16);
     iter!(ubyte, "max", "|", chkassert).outer!(0x7f,0x8f,0x7f);
     iter!(int, "max", "|", chkassert).outer!(-16,16,-16);
@@ -306,16 +281,16 @@ unittest{
     iter!(ulong, "max", "|", chkassert).outer!(0x7fffffffffffffff,0x800000000000000f,0x7fffffffffffffff);
 }
 
-I minand(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
+I minAnd(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
 in{
     assert(amin <= amax);
     assert(bmin <= bmax);
 }body{
-    return ~maxor!I(~amax, ~amin, ~bmax, ~bmin);
+    return ~maxOr!I(~amax, ~amin, ~bmax, ~bmin);
 }
 
 unittest{
-    assert(minand!byte(0,8,5,6) == 0);
+    assert(minAnd!byte(0,8,5,6) == 0);
     iter!(byte, "min", "&", chkassert).outer!(-16,16,-16);
     iter!(ubyte, "min", "&", chkassert).outer!(0x7f,0x8f,0x7f);
     iter!(int, "min", "&", chkassert).outer!(-16,16,-16);
@@ -324,16 +299,16 @@ unittest{
     iter!(ulong, "min", "&", chkassert).outer!(0x7fffffffffffffff,0x800000000000000f,0x7fffffffffffffff);
 }
 
-I minor(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
+I minOr(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
 in{
     assert(amin <= amax);
     assert(bmin <= bmax);
 }body{
-    return ~maxand!I(~amax, ~amin, ~bmax, ~bmin);
+    return ~maxAnd!I(~amax, ~amin, ~bmax, ~bmin);
 }
 
 unittest{
-    assert(minor!byte(0,8,5,6) == 5);
+    assert(minOr!byte(0,8,5,6) == 5);
     iter!(byte, "min", "|", chkassert).outer!(-16,16,-16);
     iter!(ubyte, "min", "|", chkassert).outer!(0x7f,0x8f,0x7f);
     iter!(int, "min", "|", chkassert).outer!(-16,16,-16);
@@ -342,7 +317,7 @@ unittest{
     iter!(ulong, "min", "|", chkassert).outer!(0x7fffffffffffffff,0x800000000000000f,0x7fffffffffffffff);
 }
 
-void writeranges(I)(I amin, I amax, I bmin, I bmax){
+void writeranges(I)(I amin, I amax, I bmin, I bmax) {
     writefln("amin:%032b (%s)",amin,I.stringof);
     writefln("amin:%32s",amin);
     writefln("amax:%032b (%s)",amax,I.stringof);
@@ -353,18 +328,18 @@ void writeranges(I)(I amin, I amax, I bmin, I bmax){
     writefln("bmax:%32s",bmax);
 }
 
-I maxxor(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
+I maxXor(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
 in{
     assert(amin <= amax);
     assert(bmin <= bmax);
 }body{
-    static if(isSigned!I){
+    static if(isSigned!I) {
         // ensure I.min is what we think it is
         static assert(I.min == cast(I)((cast(I)1) << (8*I.sizeof-1)));
         // ie. highbit = 1, others = 0
         static if(is(I == byte)) static assert(byte.min == cast(byte) 0x80);
 
-        debug{
+        debug(ReallyVerbose) {
             writeranges(amin,amax,bmin,bmax);
         }
         I a0 = cast(I)( amin &~amax & ~bmin & I.min);
@@ -372,19 +347,19 @@ in{
         I b0 = cast(I)( bmin &~bmax & ~amin & I.min);
         I b1 = cast(I)( bmin &~bmax &  amax & I.min);
         I ab = cast(I)( amin &~amax & bmin &~bmax & I.min);
-        if( ab ){
+        if( ab ) {
             return max(
-                    maxxor!(unsigned!I)(amin,cast(I) -1, bmin, cast(I) -1),
-                    maxxor!(unsigned!I)(0,amax, 0, bmax));
+                    maxXor!(unsigned!I)(amin,cast(I) -1, bmin, cast(I) -1),
+                    maxXor!(unsigned!I)(0,amax, 0, bmax));
         }
         if( a0 ) amin = cast(I) 0;
         if( a1 ) amax = cast(I) -1;
         if( b0 ) bmin = cast(I) 0;
         if( b1 ) bmax = cast(I) -1;
-        debug{
+        debug(ReallyVerbose) {
             writeranges(amin,amax,bmin,bmax);
         }
-        return maxxor!(unsigned!I)(amin,amax,bmin,bmax);
+        return maxXor!(unsigned!I)(amin,amax,bmin,bmax);
     }else{
         I xa00 = (~amin& amax&~bmin&~bmax);
         I xb00 = (~amin&~amax&~bmin& bmax);
@@ -412,11 +387,11 @@ in{
 }
 
 unittest{
-    assert(maxxor!byte(0,8,5,6) == 14);
-    assert(maxxor!int(0,8,5,6) == 14);
-    assert(maxxor!uint(0,8,5,6) == 14);
-    assert(maxxor!long(0,8,5,6) == 14);
-    assert(maxxor!long(-1,0,-1,1) == 1);
+    assert(maxXor!byte(0,8,5,6) == 14);
+    assert(maxXor!int(0,8,5,6) == 14);
+    assert(maxXor!uint(0,8,5,6) == 14);
+    assert(maxXor!long(0,8,5,6) == 14);
+    assert(maxXor!long(-1,0,-1,1) == 1);
     iter!(byte, "max", "^", chkassert).outer!(-16,16,-16);
     iter!(ubyte, "max", "^", chkassert).outer!(0x7f,0x8f,0x7f);
     iter!(int, "max", "^", chkassert).outer!(-16,16,-16);
@@ -425,12 +400,12 @@ unittest{
     iter!(ulong, "max", "^", chkassert).outer!(0x7fffffffffffffff,0x800000000000000f,0x7fffffffffffffff);
 }
 
-I minxor(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
+I minXor(I)(I amin, I amax, I bmin, I bmax) if(isIntegral!I)
 in{
     assert(amin <= amax);
     assert(bmin <= bmax);
 }body{
-    static if(isSigned!I){
+    static if(isSigned!I) {
         // ensure I.min is what we think it is
         static assert(I.min == cast(I)((cast(I)1) << (8*I.sizeof-1)));
         // ie. highbit = 1, others = 0
@@ -443,15 +418,15 @@ in{
         I b1 = cast(I)(bmin & ~bmax & ~amin & I.min);
         I ab = cast(I)(amin & ~amax &  bmin & ~bmax & I.min);
         +/
-        if( amin < 0 && amax >= 0 && bmin < 0 && bmax >= 0 ){
-            return min( minxor!(unsigned!I)(0,amax,bmin, cast(I)-1),
-                        minxor!(unsigned!I)(amin,cast(I)-1,0,bmax));
+        if( amin < 0 && amax >= 0 && bmin < 0 && bmax >= 0 ) {
+            return min( minXor!(unsigned!I)(0,amax,bmin, cast(I)-1),
+                        minXor!(unsigned!I)(amin,cast(I)-1,0,bmax));
         }
         if( amin < 0 && amax >= 0 && bmax <  0) amin =  0;
         if( amin < 0 && amax >= 0 && bmin >= 0) amax = -1;
         if( bmin < 0 && bmax >= 0 && amax <  0) bmin =  0;
         if( bmin < 0 && bmax >= 0 && amin >= 0) bmax = -1;
-        return minxor!(unsigned!I)(amin,amax,bmin,bmax);
+        return minXor!(unsigned!I)(amin,amax,bmin,bmax);
     }else{
         I xa00 = (~amin& amax&~bmin&~bmax);
         I xb00 = (~amin&~amax&~bmin& bmax);
@@ -481,12 +456,12 @@ in{
                       | (hbmask(xb00a11|xa11b00)      & amax&~bmin      )
                       | (hbmask(xb00b11|xb11b00)&~amin& amax            );
 
-        if (xia > xib){
+        if (xia > xib) {
             amin &= ~hbmask(xia);
         }else{
             bmin &= ~hbmask(xib);
         }
-        if (xja > xjb){
+        if (xja > xjb) {
             amax |=  hbmask(xja);
         }else {
             bmax |=  hbmask(xjb);
@@ -496,7 +471,7 @@ in{
 }
 
 unittest{
-    assert(minxor!long(0,0,-32,0) == -32);
+    assert(minXor!long(0,0,-32,0) == -32);
     iter!(byte, "min", "^", chkassert).outer!(-16,16,-16);
     iter!(ubyte, "min", "^", chkassert).outer!(0x7f,0x8f,0x7f);
     iter!(int, "min", "^", chkassert).outer!(-16,16,-16);
@@ -505,16 +480,3 @@ unittest{
     iter!(ulong, "min", "^", chkassert).outer!(0x7fffffffffffffff,0x800000000000000f,0x7fffffffffffffff);
 }
 
-void main(){
-    //iter!(uint,"max","&").outer();
-    //iter!(ubyte,"max","&").outer!(0x7f,0x8f,0x7f);
-    //iter!(ubyte,"max","|").outer!(0x7f,0x8f,0x7f);
-    //iter!(uint,"max","|").outer();
-    //iter!(int,"max","|").outer();
-    //iter!(uint,"min","&").outer;
-    //iter!(byte,"min","|").outer();
-    //iter!(int,"max","^").outer();
-    //iter!(int,"min","^",vst1).outer!(-32,64,-32);
-    //iter!(int,"max","&",vst1).outer!(-32,32,-32);
-    //iter!(short,"min","^").outer;
-}
