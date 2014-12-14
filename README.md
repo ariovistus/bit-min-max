@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/ariovistus/bit-min-max.svg?branch=master)](https://travis-ci.org/ariovistus/bit-min-max.svg?branch=master)
 This project contains algorithms to find the min or max of bitwise AND, OR, and XOR given two ranges of possible values. 
 
 There's also a paper I never finished (or made readable) that explains the derivation of these algorithms.
